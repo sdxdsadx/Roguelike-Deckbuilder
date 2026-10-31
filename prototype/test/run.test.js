@@ -15,7 +15,7 @@ const nodesOf = m => Object.values(m.nodes);
 const rowTypes = (m, f) => m.rows.find(r => r.floor === f).options.map(o => o.type);
 const RANDOM_FLOORS = [2, 3, 4, 5, 7, 8, 9, 10];
 
-test("地图：12 层；第 1 层打小怪，第 6 层宝箱，第 11 层阳台，第 12 层 Boss；其余每层 3 个不同的选项，正好 1 个战斗", () => {
+test("地图：12 层；第 1 层打小怪，第 6 层宝箱，第 11 层阳台，第 12 层 Boss；其余每层 3 个不同的选项，正好 1 个战斗；第 2、3 层没有挑战", () => {
   for (let k = 0; k < 50; k++) {
     const m = R.generateMap("seed" + k, D.RUN, "0", 1);
     assert.equal(m.rows.length, 12);
@@ -29,8 +29,58 @@ test("地图：12 层；第 1 层打小怪，第 6 层宝箱，第 11 层阳台�
       assert.equal(new Set(t).size, 3, `第 ${f} 层有重复的选项`);
       assert.equal(t.filter(x => x === "battle").length, 1);
     }
-    for (const f of [2, 3]) assert.ok(!rowTypes(m, f).some(t => t === "elite" || t === "rest"), "第 2、3 层不出挑战和阳台");
+    for (const f of [2, 3]) assert.ok(!rowTypes(m, f).includes("elite"), "第 2、3 层不出挑战");
     assert.ok(!rowTypes(m, 10).includes("rest"), "阳台层前一层不出阳台");
+  }
+});
+
+/* 某一类节点在第 from 层起最长连着出现了几层。 */
+function longestRun(rows, t) {
+  let best = 0;
+  let run = 0;
+  for (const r of rows.slice().sort((a, b) => a.floor - b.floor)) {
+    run = r.options.some(o => o.type === t) ? run + 1 : 0;
+    best = Math.max(best, run);
+  }
+  return best;
+}
+
+test("不扎堆：挑战、阳台不会连着出现 3 层，两个商店不会挨着；商店不会全挤在前两层", () => {
+  let lateShop = 0;
+  for (let k = 0; k < 300; k++) {
+    const m = R.generateMap("spread" + k, D.RUN, "0", 1);
+    assert.ok(longestRun(m.rows, "elite") <= 2, `种子 spread${k}：挑战连着出现了 3 层`);
+    assert.ok(longestRun(m.rows, "rest") <= 2, `种子 spread${k}：阳台连着出现了 3 层`);
+    assert.equal(longestRun(m.rows, "shop"), 1, `种子 spread${k}：两个商店挨着`);
+    const shops = m.rows.filter(r => r.options.some(o => o.type === "shop")).map(r => r.floor);
+    assert.equal(shops.length, 2);
+    if (shops.some(f => f > 3)) lateShop++;
+  }
+  assert.equal(lateShop, 300, "每一局第 3 层以后都至少有一个商店");
+});
+
+test("关掉不扎堆，就可能连着出现 3 层；总数照样固定", () => {
+  const off = Object.assign({}, D.RUN, { noStreak: false });
+  let streak = 0;
+  for (let k = 0; k < 300; k++) {
+    const m = R.generateMap("spread" + k, off, "0", 1);
+    if (longestRun(m.rows, "elite") >= 3 || longestRun(m.rows, "rest") >= 3) streak++;
+    const got = {};
+    for (const f of RANDOM_FLOORS) for (const t of rowTypes(m, f)) if (t !== "battle") got[t] = (got[t] || 0) + 1;
+    assert.deepEqual(got, { event: 7, elite: 4, rest: 3, shop: 2 });
+  }
+  assert.ok(streak > 0, "关掉以后至少有一张图连着出现 3 层");
+});
+
+test("不扎堆在换地图（显眼的电梯）以后也成立，并且和下面已经走过的层连起来看", () => {
+  for (let k = 0; k < 200; k++) {
+    const base = R.generateMap("elev" + k, D.RUN, "0", 1);
+    const from = 4 + (k % 5);
+    const below = base.rows.filter(r => r.floor < from);
+    const fresh = R.generateMap("elev" + k, D.RUN, "1", from, below);
+    const rows = below.concat(fresh.rows);
+    assert.equal(rows.length, 12);
+    for (const t of ["elite", "rest"]) assert.ok(longestRun(rows, t) <= 2, `elev${k} 从第 ${from} 层换图：${t} 连着出现了 3 层`);
   }
 });
 

@@ -14,13 +14,24 @@
 
   function rngFor(run, tag) { return QW.rng.create(`${run.seed}:${tag}:${run.rngCount++}`); }
 
+  /* 对局记录：每一步都记进 run.record.timeline，每场战斗的摘要记进 run.record.fights。 */
+  const now = () => new Date().toISOString();
+  function track(run, kind, text, data) {
+    if (!run.record) return;
+    const entry = { at: now(), floor: run.floor, kind, text };
+    if (data) entry.data = data;
+    run.record.timeline.push(entry);
+  }
+
   /* ---------- 地图 ----------
      一共 floors 层：第 1 层固定打小怪，倒数第 2 层固定阳台，最后一层 Boss，rewardFloor 那一层固定是宝箱。
      其余每层 3 个选项，可以任选一个往上走。
-     「假随机」：先按比例算好整张地图上奇遇、挑战、阳台、商店各出几个，装进一个袋子里打乱，再分到各层，
-     所以每局各类节点的总数是固定的，不会一局没有商店、也不会挑战扎堆。
-     每个随机层固定有 1 个战斗选项，另外 2 个从袋子里拿，同一层不重复；
-     第 2、3 层不出挑战和阳台，阳台层前一层不出阳台。 */
+     「假随机」：先按比例算好整张地图上奇遇、挑战、阳台、商店各出几个，再分到各层，
+     所以每局各类节点的总数是固定的，不会一局没有商店。
+     每个随机层固定有 1 个战斗选项，另外 2 个从这些名额里拿，同一层不重复；
+     第 2、3 层不出挑战，阳台层前一层不出阳台。
+     不扎堆（cfg.noStreak，默认开）：一类节点有 3 个以上的，不会连着出现 3 层；只有 1–2 个的（默认是商店），
+     不会出现在相邻两层。数量多到躲不开的那一类不限制（默认的奇遇有 7 个，随机层只有 8 层）。 */
   function layout(cfg) {
     const total = clamp(Math.round(cfg.floors), 5, 20);
     const reward = clamp(Math.round(cfg.rewardFloor), 2, total - 2);
@@ -49,8 +60,9 @@
     return out;
   }
 
-  /* 把袋子里的节点分到各层：限制最多的层先分（第 2、3 层），每层挑一组类型，同一层不重复；
-     分到后面发现剩下的分不完，就退回去换一组。allowed 放不下时依次放宽：先去掉层数限制，再允许同层重复。 */
+  /* 把名额分到各层：限制最多的层先分（第 2、3 层），每层挑一组类型，同一层不重复；
+     分到后面发现剩下的分不完，就退回去换一组。checks 是额外的限制（不扎堆），从严到松排好。
+     放不下时依次放宽：先一步步放宽不扎堆，再去掉层数限制，最后允许同层重复。 */
   function combos(arr, k, repeat) {
     const out = [];
     const walk = (start, pick) => {
@@ -61,12 +73,12 @@
     return out;
   }
 
-  function assignBag(rng, counts, floors, perFloor, allowed) {
+  function assignBag(rng, counts, floors, perFloor, allowed, checks) {
     const types = Object.keys(counts).filter(k => counts[k] > 0);
     const need = types.reduce((a, t) => a + counts[t], 0);
     if (need < floors.length * perFloor) perFloor = Math.floor(need / Math.max(1, floors.length));
-    const tries = [[allowed, true], [() => true, true], [() => true, false]];
-    for (const [ok, distinct] of tries) {
+    const tries = (checks || []).map(c => [allowed, true, c]).concat([[allowed, true, null], [() => true, true, null], [() => true, false, null]]);
+    for (const [ok, distinct, extra] of tries) {
       const left = Object.assign({}, counts);
       const order = floors.slice().sort((a, b) => types.filter(t => ok(a, t)).length - types.filter(t => ok(b, t)).length || a - b);
       const result = {};
@@ -81,8 +93,11 @@
         const f = order[i];
         for (const pick of rng.shuffle(combos(types.filter(t => left[t] > 0 && ok(f, t)), perFloor, !distinct))) {
           if (!distinct && pick.some(t => pick.filter(x => x === t).length > left[t])) continue;
+          if (extra && !extra(result, f, pick)) continue;
           pick.forEach(t => { left[t]--; });
-          if (feasible(i + 1) && dfs(i + 1)) { result[f] = pick; return true; }
+          result[f] = pick;
+          if (feasible(i + 1) && dfs(i + 1)) return true;
+          delete result[f];
           pick.forEach(t => { left[t]++; });
         }
         return false;
@@ -94,7 +109,35 @@
     return result;
   }
 
-  function generateMap(seed, cfg, tag, fromFloor) {
+  /* 不扎堆：每一类最多连着几层。只有 1–2 个的不挨着（1 层），其余最多连着 2 层；
+     怎么摆都躲不开的那一类不限制。「躲不躲得开」从下往上一层层算：已经定下来的层（固定层、换地图时下面走过的层）
+     上有这一类就必须算进连着的层数里，能放这一类的随机层可放可不放，看最多能放几个够不够数。 */
+  function spreadLimits(counts, total, isFree, fixedHas) {
+    const limits = {};
+    for (const t of Object.keys(counts)) {
+      if (!(counts[t] > 0)) continue;
+      const r = counts[t] <= 2 ? 1 : 2;
+      let best = [0].concat(Array(r).fill(-Infinity));  // best[k]：现在连着 k 层有这一类时，最多放了几个
+      for (let g = 1; g <= total; g++) {
+        const next = Array(r + 1).fill(-Infinity);
+        const forced = fixedHas(g, t);
+        const free = isFree(g, t);
+        for (let k = 0; k <= r; k++) {
+          if (best[k] === -Infinity) continue;
+          // 定下来的层改不了：已经连着超过上限也只能认，只是紧挨着它的随机层不能再放
+          if (forced) { const k2 = Math.min(k + 1, r); next[k2] = Math.max(next[k2], best[k]); continue; }
+          next[0] = Math.max(next[0], best[k]);
+          if (free && k < r) next[k + 1] = Math.max(next[k + 1], best[k] + 1);
+        }
+        best = next;
+      }
+      if (Math.max(...best) >= counts[t]) limits[t] = r;
+    }
+    return limits;
+  }
+
+  /* below：换地图时下面已经走过的那几层，不扎堆要连着它们一起看。 */
+  function generateMap(seed, cfg, tag, fromFloor, below) {
     const rng = QW.rng.create(`${seed}:map:${tag}`);
     const { total, reward } = layout(cfg);
     const from = fromFloor || 1;
@@ -102,8 +145,34 @@
     for (let f = from; f <= total; f++) if (!fixedType(f, total, reward)) randomFloors.push(f);
     const extra = OPTIONS - 1;
     const counts = quota(cfg.weights, randomFloors.length * extra);
-    const slots = assignBag(rng, counts, randomFloors, extra,
-      (f, t) => !(f <= 3 && (t === "elite" || t === "rest")) && !(f === total - 2 && t === "rest"));
+    const allowed = (f, t) => !(f <= 3 && t === "elite") && !(f === total - 2 && t === "rest");
+    const checks = [];
+    if (cfg.noStreak !== false && randomFloors.length) {
+      const prior = {};
+      for (const r of below || []) prior[r.floor] = r.options.map(o => o.type);
+      const fixedAt = g => {
+        if (prior[g]) return prior[g];
+        const fx = g >= from && g <= total ? fixedType(g, total, reward) : null;
+        return fx ? [fx] : [];
+      };
+      const limits = spreadLimits(counts, total, (g, t) => randomFloors.includes(g) && allowed(g, t), (g, t) => fixedAt(g).includes(t));
+      const typesAt = (result, g) => result[g] || fixedAt(g);
+      const make = lim => (result, f, pick) => pick.every(t => {
+        if (!lim[t]) return true;
+        let n = 1;
+        for (let g = f - 1; typesAt(result, g).includes(t); g--) n++;
+        for (let g = f + 1; typesAt(result, g).includes(t); g++) n++;
+        return n <= lim[t];
+      });
+      // 每一类单独都摆得开，合在一起却可能摆不开：那就从数量最多的那一类开始，一类一类放开
+      const byCount = Object.keys(limits).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+      for (let i = 0; i < byCount.length; i++) {
+        const lim = {};
+        byCount.slice(i).forEach(t => { lim[t] = limits[t]; });
+        checks.push(make(lim));
+      }
+    }
+    const slots = assignBag(rng, counts, randomFloors, extra, allowed, checks);
     const rows = [];
     for (let f = from; f <= total; f++) {
       const fixed = fixedType(f, total, reward);
@@ -134,7 +203,8 @@
       removals: 0, firstReward: true, nextStrength: 0, usedEvents: [], fights: 0,
       mapGen: 0, map: null, pos: null, floor: 0, visited: [], areaSlotLost: false,
       lockHp: false, freeTravel: false,
-      screen: { kind: "map" }, queue: [], result: null,
+      screen: { kind: "map" }, queue: [], result: null, survey: null,
+      record: { id: opts.id || `run-${opts.seed}-${Date.now().toString(36)}`, startedAt: opts.startedAt || now(), timeline: [], fights: [] },
       stats: { battles: 0, elites: 0, bosses: 0, hpLost: 0, turns: 0, goldEarned: 0, goldSpent: 0, cardsAdded: 0, cardsRemoved: 0, relics: [], path: [] }
     };
     run.map = generateMap(run.seed, cfg, "0", 1);
@@ -162,6 +232,7 @@
     run.floor = node.floor;
     run.visited.push(id);
     run.stats.path.push(node.type);
+    track(run, "enter", `第 ${node.floor} 层：${D.NODE_TYPES[node.type]}`, { node: id, type: node.type });
     let type = node.type;
     if (type === "event") {
       const ev = pickEvent(run);
@@ -219,6 +290,10 @@
     run.stats.hpLost += c.stats.hpLost;
     run.stats.turns += c.turn;
     run.nextStrength = 0;
+    const sum = c.summary();
+    if (run.record) run.record.fights.push(Object.assign({ floor: run.floor, type: sc.type, endedAt: now() }, sum));
+    const what = sc.type === "boss" ? "Boss 战" : D.NODE_TYPES[sc.type];
+    track(run, "fight", `${what}${c.result === "win" ? "胜利" : "失败"}（${sum.enemies.join("、")}）：${c.turn} 回合，掉了 ${c.stats.hpLost} 血`);
     if (c.result !== "win") {
       run.result = "lose";
       run.queue = [];
@@ -289,6 +364,7 @@
     if (!id || run.relics[id]) return;
     run.relics[id] = true;
     run.stats.relics.push(id);
+    track(run, "relic", `获得奇物「${D.RELICS[id].name}」`, { relic: id });
     if (lines) lines.push(`奇物「${D.RELICS[id].name}」`);
     if (id === "hollowHeart") run.queue.push({ kind: "remove", count: 1, title: "空虚之心：选一张牌移除" });
     else if (id === "encyclopedia") for (let k = 1; k <= 3; k++) run.queue.push(cardStep(run, run.cfg.rarePct, `百科全书：第 ${k} 组卡牌奖励`, false));
@@ -320,7 +396,8 @@
     if (run.hp <= 0) { run.result = "lose"; run.queue = []; }
   }
 
-  function note(run, text) { (run.screen.notes = run.screen.notes || []).push(text); }
+  function say(run, text) { (run.screen.notes = run.screen.notes || []).push(text); }
+  function note(run, text) { say(run, text); track(run, "note", text); }
 
   /* ---------- 待处理的事（选牌、删牌、升级、选卡槽） ---------- */
   function autoSteps(run) {
@@ -353,13 +430,19 @@
     if (!s) return no("没有要处理的事");
     const p = payload || {};
     if (s.kind === "cards") {
-      if (p.skip) { run.queue.shift(); note(run, "跳过了这组卡牌奖励"); }
-      else {
+      /* 卡牌奖励单独记一条：给了哪几张、拿了哪张，汇总时算每张牌的选取率。 */
+      const offered = s.options.map(cardName);
+      if (p.skip) {
+        run.queue.shift();
+        say(run, "跳过了这组卡牌奖励");
+        track(run, "cards", `卡牌奖励（${offered.join("、")}）：跳过`, { offered, picked: null });
+      } else {
         const opt = s.options[p.index];
         if (!opt) return no("没有这个选项");
         const how = addCard(run, opt);
         run.queue.shift();
-        note(run, how === "replaced" ? "寒霜之触替换了卡组里的冰霜之触" : `「${cardName(opt)}」加入了卡组`);
+        say(run, how === "replaced" ? "寒霜之触替换了卡组里的冰霜之触" : `「${cardName(opt)}」加入了卡组`);
+        track(run, "cards", `卡牌奖励（${offered.join("、")}）：拿了「${cardName(opt)}」`, { offered, picked: cardName(opt) });
       }
     } else if (s.kind === "remove") {
       const card = run.deck[p.index];
@@ -425,6 +508,7 @@
     for (const fx of outcome.fx) applyFx(run, fx, lines);
     if (!outcome.fx.length) lines.push("无事发生");
     sc.lines = lines;
+    track(run, "event", `奇遇「${ev.name}」：选了「${opt.label}」`, { event: ev.id, choice: index, outcome: k, lines });
     autoSteps(run);
     return ok;
   }
@@ -458,8 +542,9 @@
     const from = run.floor + 1;
     if (from >= run.cfg.floors - 1) { note(run, "已经快到顶了，电梯没有去别的停车场"); return; }
     run.mapGen++;
-    const fresh = generateMap(run.seed, run.cfg, String(run.mapGen), from);
-    run.map.rows = run.map.rows.filter(r => r.floor < from).concat(fresh.rows);
+    const below = run.map.rows.filter(r => r.floor < from);
+    const fresh = generateMap(run.seed, run.cfg, String(run.mapGen), from, below);
+    run.map.rows = below.concat(fresh.rows);
     note(run, "电梯门开了，外面是另一个停车场：上面几层的选项都变了");
   }
 
@@ -546,7 +631,8 @@
     sc.opened = true;
     const lines = [];
     const id = randomRelic(run);
-    if (id) gainRelic(run, id, lines); else addGold(run, 3, lines);
+    if (id) gainRelic(run, id, lines); // 拿到奇物已经记过一条
+    else { addGold(run, 3, lines); track(run, "treasure", `宝箱：奇物拿光了，${lines.join("，")}`); }
     sc.lines = lines;
     autoSteps(run);
     return ok;

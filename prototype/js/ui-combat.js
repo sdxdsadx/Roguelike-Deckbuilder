@@ -356,6 +356,7 @@
 
   function showResult() {
     const c = V.c;
+    if (!c || !c.result) return;
     const r = V.ctrl.result(c);
     U.hideFlash();
     $("#overlay").innerHTML = `<div class="result ${r.cls}" role="dialog" aria-modal="true" aria-labelledby="res-title">`
@@ -551,5 +552,5 @@
   }
 
   init();
-  QW.ui.combat = { start, stop, render, statRows, current: () => V.c };
+  QW.ui.combat = { start, stop, render, statRows, showResult, current: () => V.c };
 })();
