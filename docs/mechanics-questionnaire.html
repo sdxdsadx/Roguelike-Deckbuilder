@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>秦雾机制确认问卷</title>
+<title>卡牌肉鸽机制确认问卷</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap">
@@ -214,7 +214,7 @@ textarea { resize: vertical; min-height: 76px; line-height: 1.6; }
 <main class="wrap">
   <form id="form" autocomplete="off">
     <section class="intro">
-      <h1>秦雾 · 卡牌肉鸽 机制确认</h1>
+      <h1>卡牌肉鸽机制确认</h1>
       <p>我读完了你的策划表。下面是做测试网页之前需要你拍板的地方。</p>
       <div class="stats" aria-label="策划表内容">
         <span class="stat">敌怪<b>10</b></span>
@@ -912,7 +912,7 @@ textarea { resize: vertical; min-height: 76px; line-height: 1.6; }
   }
   function answersText() {
     const { answered, total } = progress();
-    const lines = [`【秦雾机制问卷】已答 ${answered}/${total}`];
+    const lines = [`【机制确认问卷】已答 ${answered}/${total}`];
     for (const lv of LEVELS) {
       lines.push("", `${lv.id} ${lv.title}`);
       for (const it of lv.items) {
