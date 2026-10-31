@@ -138,7 +138,8 @@
       + "</section>"
       + '<section class="box" aria-labelledby="h-run-rules"><div class="box-head"><h2 id="h-run-rules">这一局的数</h2><button type="button" class="btn" data-ract="cfg-reset">恢复默认</button></div>'
       + `<div class="fields">${fields}</div><h3 class="sub">随机层的另外 2 个选项按这个比例分配（每个随机层固定有 1 个战斗）</h3><div class="fields">${weights}</div>`
-      + "<p class=\"note\">层数和固定层已经确认，金币和商店卡牌价格是问卷里定的；宝箱放在第几层、节点比例、阳台回血、梦想卡出现率、商店货量是我先定的默认值（待确认），改完下一局生效。卡牌和敌人的数值、锁血和无限费用在「战斗沙盒」的设置页里改，两边通用。</p>"
+      + `<label class="toggle"><input type="checkbox" data-rflag="noStreak"${s.run.noStreak !== false ? " checked" : ""}>不扎堆：同一类节点不会连着出现 3 层；只有 1–2 个的（默认是商店）不会出现在相邻两层</label>`
+      + "<p class=\"note\">层数和固定层已经确认，金币和商店卡牌价格是问卷里定的；宝箱放在第几层、节点比例、不扎堆、阳台回血、梦想卡出现率、商店货量是我先定的默认值（待确认），改完下一局生效。奇遇默认有 7 个、随机层只有 8 层，怎么摆都会连着出现，所以不扎堆管不到它。卡牌和敌人的数值、锁血和无限费用在「战斗沙盒」的设置页里改，两边通用。</p>"
       + "</section></div>";
   }
 
@@ -470,6 +471,7 @@
   function onChange(ev) {
     const t = ev.target;
     const s = U.S.set;
+    if (t.dataset.rflag) { s.run[t.dataset.rflag] = t.checked; U.saveSettings(); return; }
     if (t.dataset.rset === "runSeed") { s.runSeed = t.value.trim().slice(0, 24) || U.randomSeed(); U.saveSettings(); return; }
     const v = Number(t.value);
     if (t.value === "" || !Number.isFinite(v)) return;

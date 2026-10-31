@@ -93,6 +93,7 @@
           const v = Number(s.run.weights[k]);
           if (Number.isFinite(v)) d.run.weights[k] = clamp(Math.round(v), 0, 100);
         }
+        if (typeof s.run.noStreak === "boolean") d.run.noStreak = s.run.noStreak;
       }
     } catch (e) { /* 没有存档就用默认 */ }
     return d;

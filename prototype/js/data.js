@@ -285,6 +285,7 @@
     floors: 12,                                                  // 一共几层（含 Boss）
     rewardFloor: 6,                                              // 固定出奖励（宝箱）的那一层
     weights: { event: 25, elite: 12, rest: 10, shop: 8 },        // 随机层除了 1 个战斗，另外 2 个选项的比例
+    noStreak: true,                                              // 不扎堆：同一类不连着出现 3 层，只有 1–2 个的不挨着
     startGold: 3, goldBattle: 1, goldElite: 5, goldBoss: 0,      // 问卷 B6-05
     restHeal: 9,                                                 // 阳台回血量，问卷里还没定
     rarePct: 8, eliteRarePct: 20,                                // 卡牌奖励里出现梦想卡的概率（%）
