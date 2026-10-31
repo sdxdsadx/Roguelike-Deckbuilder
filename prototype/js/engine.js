@@ -30,7 +30,7 @@
       this.player = { hp: Math.min(cfg.startHp, cfg.playerHp), maxHp: cfg.playerHp, energy: 0, maxEnergy: cfg.energy, shield: 0 };
       this.slots = Array.from({ length: LANES }, (_, i) => ({
         i, hp: cfg.slotHp, maxHp: cfg.slotHp, destroyed: false, kind: "normal", baseKind: "normal",
-        armor: 0, alibi: false, played: null, occ: null
+        armor: 0, alibi: false, played: [], occ: null
       }));
       this.drawPile = [];
       this.hand = [];
@@ -200,10 +200,8 @@
       for (const c of this.hand) (this.def(c).retain ? keep : this.discardPile).push(c);
       this.hand = keep;
       for (const s of this.slots) {
-        if (s.played) {
-          (this.def(s.played).exhaust ? this.exhaustPile : this.discardPile).push(s.played);
-          s.played = null;
-        }
+        for (const pc of s.played) (this.def(pc).exhaust ? this.exhaustPile : this.discardPile).push(pc);
+        s.played = [];
         if (s.occ && s.occ.kind === "doom") { this.discardPile.push(s.occ.card); s.occ = null; }
         if (s.occ && s.occ.kind === "sludge") { s.occ = null; this.log(`第 ${s.i + 1} 槽的淤泥清走了`); }
       }
@@ -321,7 +319,8 @@
       return drawn;
     }
 
-    freeIntactSlots() { return this.slots.filter(s => !s.destroyed && !s.occ && !s.played); }
+    /* 一个卡槽一回合可以放好几张牌；只有被占住（持续型的牌、诅咒、淤泥、影卒）才放不进去。 */
+    freeIntactSlots() { return this.slots.filter(s => !s.destroyed && !s.occ); }
 
     nextLarva() {
       if (this.pending) return;
@@ -335,7 +334,7 @@
     placeLarva(lane) {
       if (!this.pending || this.pending.type !== "larva") return no("现在不用放颤蚓幼虫");
       const s = this.slots[lane];
-      if (s.destroyed || s.occ || s.played) return no("只能放进空着的完好卡槽");
+      if (s.destroyed || s.occ) return no("只能放进没被占住的完好卡槽");
       s.occ = { kind: "larva", card: this.pending.card };
       this.larvaQueue.shift();
       this.pending = null;
@@ -346,7 +345,7 @@
 
     placeDoom(c) {
       let s = this.mirror && this.mirror.pos != null ? this.slots[this.mirror.pos] : null;
-      if (!s || s.destroyed || s.occ || s.played) {
+      if (!s || s.destroyed || s.occ) {
         const free = this.freeIntactSlots();
         s = free.length ? this.rng.pick(free) : null;
       }
@@ -382,9 +381,8 @@
     }
 
     slotReason(s) {
-      if (s.destroyed) return s.played ? "这个卡槽本回合已经放过牌" : "这个卡槽被打爆了，这张牌放不进去";
-      if (s.played) return "这个卡槽本回合已经放过牌";
       if (s.occ) return `这个卡槽被${this.occName(s.occ)}占着`;
+      if (s.destroyed) return "这个卡槽被打爆了，这张牌放不进去";
       return "";
     }
 
@@ -398,8 +396,8 @@
 
     laneCheck(c, lane) {
       const s = this.slots[lane];
-      const brokenFree = s.destroyed && !s.played && !s.occ;
-      const intactFree = (!s.destroyed && !s.played && !s.occ) || (brokenFree && this.brokenSlotAllows(c));
+      const brokenFree = s.destroyed && !s.occ;
+      const intactFree = (!s.destroyed && !s.occ) || (brokenFree && this.brokenSlotAllows(c));
       const tt = this.targetType(c);
       if (tt === "slot") return intactFree ? ok : no(this.slotReason(s));
       if (tt === "opposite") {
@@ -409,7 +407,7 @@
         if (c.id === "polymorph" && (t.kind !== "enemy" || t.ref.tier === "精英" || t.ref.tier === "BOSS")) return no("只能变形普通敌人");
         return ok;
       }
-      if (tt === "destroyed") return brokenFree ? ok : no(s.destroyed ? "这个卡槽本回合已经放过牌" : "只能放进被打爆的卡槽");
+      if (tt === "destroyed") return brokenFree ? ok : no(s.destroyed ? this.slotReason(s) : "只能放进被打爆的卡槽");
       if (tt === "flashFreeze") {
         if (brokenFree) return ok;
         if (!intactFree) return no(this.slotReason(s));
@@ -448,7 +446,7 @@
       else { this.drawPile.splice(loc.index, 1); this.revealed = this.revealed.filter(u => u !== uid); }
       const s = this.slots[lane];
       if (d.persist) s.occ = { kind: "card", card: c, turnsLeft: d.persist };
-      else s.played = c;
+      else s.played.push(c);
       this.stats.cardsPlayed++;
       this.log(`打出「${this.cardName(c)}」（${cost} 费${usedFree ? "，时侠腕表免费" : ""}）→ 第 ${lane + 1} 槽`, "play");
       if (d.type === "攻击") this.flags.attackPlayed = true;

@@ -118,7 +118,7 @@
     if (!s.destroyed) inner += bar(s.hp, s.maxHp, "slot-hp");
     inner += badges({ armor: s.armor, alibi: s.alibi });
     if (s.occ) inner += occHtml(c, s.occ);
-    if (s.played) inner += `<span class="placed ${TYPE_CLASS[c.def(s.played).type]}">${esc(c.cardName(s.played))}</span>`;
+    for (const pc of s.played) inner += `<span class="placed ${TYPE_CLASS[c.def(pc).type]}">${esc(c.cardName(pc))}</span>`;
     const why = choosing && !valid.has(s.i) ? reasons[s.i] || "" : "";
     const label = `第 ${s.i + 1} 槽，${name}${s.destroyed ? "" : `，${s.hp}/${s.maxHp} 血`}${s.armor ? `，护甲 ${s.armor}` : ""}`
       + (inc[s.i] ? `，将受到 ${inc[s.i]} 点攻击` : "") + (choosing ? (valid.has(s.i) ? "，可以放这里" : `，不能放：${why}`) : "");

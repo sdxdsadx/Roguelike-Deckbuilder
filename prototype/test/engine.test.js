@@ -91,13 +91,21 @@ test("默认规则下，被打爆那一列的敌人还能用单体牌打到，�
   assert.equal(e.asleep, false);
 });
 
-test("一个卡槽一回合只能放 1 张牌", () => {
+test("一个卡槽一回合可以放好几张牌；暗影塑形这类持续型的牌放下后，卡槽就被占住", () => {
   const c = fight(lanes("slime"));
-  playOk(c, give(c, "parry"), 2);
-  const second = give(c, "parry");
-  const r = c.play(second.uid, 2);
+  playOk(c, give(c, "strike"), 0);
+  playOk(c, give(c, "parry"), 0);
+  assert.equal(c.slots[0].played.length, 2);
+  assert.equal(c.slots[0].armor, 1);
+  playOk(c, give(c, "shadowForm"), 0);
+  const r = c.play(give(c, "frostTouch").uid, 0);
   assert.equal(r.ok, false);
-  assert.match(r.reason, /已经放过牌/);
+  assert.match(r.reason, /占着/);
+  c.endTurn();
+  assert.equal(c.slots[0].played.length, 0, "回合结束，普通牌进弃牌堆");
+  assert.ok(c.slots[0].occ && c.slots[0].occ.card.id === "shadowForm", "暗影塑形还占着");
+  c.hand = [];
+  assert.equal(c.canPlay(give(c, "strike").uid, 0).ok, false, "下回合还是放不进去");
 });
 
 test("寒冷不管几层都只让攻击 -1，最低到 1；每个玩家回合开始 -1 层", () => {
