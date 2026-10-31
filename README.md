@@ -9,6 +9,7 @@
 | `design/game-design.xlsx` | 策划原表：敌怪、事件、卡牌、奇物 |
 | `design/game-design.md` | 原表的 Markdown 版，可以直接在 GitHub 上阅读（脚本生成，不要手改） |
 | `tools/xlsx_to_md.py` | 把 xlsx 导出成 Markdown 的脚本 |
+| `docs/mechanics-questionnaire.html` | 机制确认问卷（网页），表里没写清楚的规则都在这里提问 |
 
 改完策划表后，重新生成 Markdown：
 
@@ -23,4 +24,4 @@ python3 tools/xlsx_to_md.py design/game-design.xlsx design/game-design.md
 - 每回合 3 点费用，剩余费用不保留到下回合。
 - 地图节点：战斗、挑战、奇遇、阳台、宝箱、商店、Boss。
 
-表里还没写清楚的机制整理成了一份网页问卷，答复后把结论补到这里。
+表里还没写清楚的机制整理成了网页问卷 `docs/mechanics-questionnaire.html`，答复后把结论补到这里。

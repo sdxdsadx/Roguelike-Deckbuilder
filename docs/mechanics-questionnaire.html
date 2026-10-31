@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>秦雾机制确认问卷</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap">
+<style>
+:root {
+  /* 地库：混凝土灰底 + 钠灯琥珀。每一节是一层地库（B1、B2…），题号像车位编号。 */
+  --bg: #E7E8E3;
+  --surface: #F7F7F4;
+  --ink: #1B201E;
+  --muted: #59615C;
+  --line: #C6C9C1;
+  --accent: #E2A62B;
+  --accent-ink: #7F5300;
+  --accent-soft: #FAEDCC;
+  --ok: #2E6A3E;
+  --bad: #A2342A;
+  --sign-ink: #1B201E;
+  --font-display: "Barlow Condensed", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121514;
+    --surface: #1B1F1D;
+    --ink: #E4E7E2;
+    --muted: #9AA19C;
+    --line: #313733;
+    --accent: #E8AE35;
+    --accent-ink: #F0C25F;
+    --accent-soft: #2C2617;
+    --ok: #3F8A54;
+    --bad: #B5483D;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121514;
+  --surface: #1B1F1D;
+  --ink: #E4E7E2;
+  --muted: #9AA19C;
+  --line: #313733;
+  --accent: #E8AE35;
+  --accent-ink: #F0C25F;
+  --accent-soft: #2C2617;
+  --ok: #3F8A54;
+  --bad: #B5483D;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-text-size-adjust: 100%;
+}
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+button, input, textarea { font: inherit; color: inherit; }
+input:focus-visible, textarea:focus-visible, button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+::placeholder { color: var(--muted); opacity: .85; }
+.wrap { max-width: 800px; margin: 0 auto; padding: 0 16px; }
+
+/* 顶栏 */
+.bar { position: sticky; top: 0; z-index: 10; background: var(--surface); border-bottom: 1px solid var(--line); }
+.bar-in { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 10px 0 6px; }
+.bar-title { font-weight: 700; font-size: 15px; }
+.bar-prog { font-family: var(--font-display); font-weight: 600; font-size: 18px; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.meter { flex: 1 1 140px; min-width: 120px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.meter > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s ease; }
+.save { flex-basis: 100%; font-size: 13px; color: var(--muted); }
+.save[data-kind="local"], .save[data-kind="error"], .save[data-kind="slow"] { color: var(--bad); }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; }
+.chip {
+  flex: none; display: inline-flex; gap: 6px; align-items: baseline;
+  border: 1px solid var(--line); background: var(--bg); border-radius: 6px;
+  padding: 1px 10px; cursor: pointer;
+  font-family: var(--font-display); font-weight: 600; font-size: 15px; font-variant-numeric: tabular-nums;
+}
+.chip b { font-weight: 700; }
+.chip span { color: var(--muted); }
+.chip.done { border-color: var(--accent); background: var(--accent-soft); }
+
+/* 开头 */
+.intro { padding: 28px 0 4px; display: grid; gap: 12px; }
+.intro h1 { font-size: 28px; font-weight: 900; line-height: 1.35; }
+.intro p { margin: 0; max-width: 40em; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.stat { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 1px 10px; font-size: 14px; }
+.stat b { font-family: var(--font-display); font-size: 18px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* 每一层 */
+.level { padding-top: 32px; display: grid; gap: 14px; scroll-margin-top: 120px; }
+.level-head { display: flex; align-items: center; gap: 12px; }
+.sign {
+  font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1;
+  background: var(--accent); color: var(--sign-ink);
+  padding: 6px 10px 4px; border-radius: 6px; letter-spacing: .02em;
+}
+.level-head h2 { font-size: 22px; font-weight: 900; }
+.stripe {
+  height: 6px; border-radius: 3px; opacity: .85;
+  background: repeating-linear-gradient(-45deg, var(--accent) 0 10px, var(--sign-ink) 10px 20px);
+}
+.level-intro { margin: 0; color: var(--muted); font-size: 15px; }
+
+/* 单题 */
+.q { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 10px; scroll-margin-top: 120px; }
+.q-head { display: flex; gap: 10px; align-items: baseline; }
+.qid { flex: none; font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--muted); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.q h3 { font-size: 17px; font-weight: 700; line-height: 1.5; }
+.src { margin: 0; font-size: 14px; color: var(--muted); border-left: 3px solid var(--line); padding-left: 10px; }
+.src em { font-style: normal; font-weight: 700; margin-right: 6px; }
+.ex { margin: 0; font-size: 14px; }
+.opts { display: grid; gap: 8px; }
+.opt {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); cursor: pointer;
+}
+.opt input { flex: none; width: 16px; height: 16px; margin: 5px 0 0; accent-color: var(--accent); }
+.opt-t { flex: 1; }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.opt.def .opt-t { color: var(--muted); }
+.guess {
+  flex: none; align-self: center; white-space: nowrap;
+  font-size: 12px; line-height: 1.6; color: var(--accent-ink);
+  border: 1px dashed var(--accent-ink); border-radius: 999px; padding: 0 8px;
+}
+.note { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.note input, .fields input, .fix, textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--ink); padding: 7px 10px; font-size: 15px;
+}
+textarea { resize: vertical; min-height: 76px; line-height: 1.6; }
+.multi { display: flex; flex-wrap: wrap; gap: 8px; }
+.tick {
+  display: inline-flex; gap: 8px; align-items: center;
+  padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); cursor: pointer;
+}
+.tick input { accent-color: var(--accent); }
+.tick:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.fields label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+
+/* B1 核对清单 */
+.checks { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.chk {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 6px 12px; align-items: start;
+  padding: 12px 16px; border-top: 1px solid var(--line); scroll-margin-top: 120px;
+}
+.chk:first-child { border-top: 0; }
+.chk p { margin: 0; }
+.seg { position: relative; display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.seg label { padding: 3px 14px; font-size: 14px; cursor: pointer; user-select: none; background: var(--bg); white-space: nowrap; }
+.seg label.no { border-left: 1px solid var(--line); }
+.seg input:checked + label.yes { background: var(--ok); color: #fff; }
+.seg input:checked + label.no { background: var(--bad); color: #fff; }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chk .fix { grid-column: 2 / 4; }
+.check-tools { display: flex; justify-content: flex-end; }
+.btn-ghost { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 14px; font-size: 14px; cursor: pointer; }
+
+/* 提交 */
+.submit { margin: 40px 0 64px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 12px; }
+.submit h2 { font-size: 20px; font-weight: 900; }
+.submit p { margin: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn-primary { background: var(--accent); color: var(--sign-ink); border: 0; border-radius: 8px; padding: 10px 22px; font-size: 16px; font-weight: 700; cursor: pointer; }
+.btn-primary[disabled] { opacity: .6; cursor: progress; }
+.result { font-size: 15px; }
+.result.warn { color: var(--bad); }
+.copybox { min-height: 220px; font-size: 13px; }
+
+@media (max-width: 560px) {
+  .intro h1 { font-size: 24px; }
+  .chk { grid-template-columns: auto 1fr; }
+  .chk .seg { grid-column: 2; justify-self: start; }
+  .chk .fix { grid-column: 1 / 3; }
+  .q { padding: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .meter > i { transition: none; }
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <div class="bar-in">
+      <span class="bar-title">机制确认问卷</span>
+      <span class="bar-prog" id="prog">已答 0 / 0</span>
+      <span class="meter" aria-hidden="true"><i id="meter"></i></span>
+      <span class="save" id="save" role="status" aria-live="polite">正在准备……</span>
+    </div>
+    <nav class="chips" id="chips" aria-label="跳到某一节"></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <form id="form" autocomplete="off">
+    <section class="intro">
+      <h1>秦雾 · 卡牌肉鸽 机制确认</h1>
+      <p>我读完了你的策划表。下面是做测试网页之前需要你拍板的地方。</p>
+      <div class="stats" aria-label="策划表内容">
+        <span class="stat">敌怪<b>10</b></span>
+        <span class="stat">事件<b>4</b></span>
+        <span class="stat">卡牌<b>25</b></span>
+        <span class="stat">奇物<b>9</b></span>
+        <span class="stat">问题<b id="total-q">0</b></span>
+      </div>
+      <p>每题都标了「我的猜测」：和你想的一样就直接选它，还没想好就选「先按我的猜测做」。B1–B3 最影响战斗原型，建议先答；后面的可以晚点回来接着填，答案会自动保存。填完点最下面的「提交给 Claude」。</p>
+    </section>
+
+    <div id="levels"></div>
+
+    <section class="submit" aria-labelledby="submit-title">
+      <h2 id="submit-title">提交</h2>
+      <p id="sum"></p>
+      <div class="actions">
+        <button type="button" class="btn-primary" id="send">提交给 Claude</button>
+        <button type="button" class="btn-ghost" id="copy">复制答案</button>
+      </div>
+      <p class="result" id="result" role="status" aria-live="polite"></p>
+      <textarea class="copybox" id="copybox" readonly hidden aria-label="答案文本"></textarea>
+    </section>
+  </form>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const OTHER = ["other", "其他（写在补充里）"];
+
+  const LEVELS = [
+    {
+      id: "B1", title: "先核对：我目前的理解",
+      intro: "这些是我从表和你的消息里推出来的规则。对的点「对」；不对的点「不对」，再写上正确的说法。",
+      items: [
+        ["B1-01", "每回合回满 3 费，没用完的费用不会留到下回合。（你的消息在「剩余费用不会」那里断开了）"],
+        ["B1-02", "玩家有 5 个卡槽，排成一排。30 血 = 5 × 6，五个卡槽全被打爆正好死亡。"],
+        ["B1-03", "玩家血量整局保留，不会自动回满；降到 0 就失败。"],
+        ["B1-04", "每回合抽 5 张；回合结束弃掉全部手牌（「保留」的除外）；抽牌堆空了，把弃牌堆洗回去。"],
+        ["B1-05", "手牌按抽到的顺序从左往右排，不能手动调整，所以红视-2000 封住的是最新抽到的那张。"],
+        ["B1-06", "多段意图按顺序循环，比如蠕行淤泥：攻击 → 攻击 → 自愈1 → 攻击 → ……"],
+        ["B1-07", "残破书页（稀有度：基础）是开局自带的奇物。卡牌奖励平时 3 选 1，有它时第一次 4 选 1。"],
+        ["B1-08", "寒冷不管几层都只让攻击 -1（最低到 1）；层数是剩余回合数，也是雪葬拿来和生命比较的数。"],
+        ["B1-09", "打滑只在回合结束时还在手里才触发。它和其他敌人塞进来的牌一样，战斗结束后移除。"],
+        ["B1-10", "刺耳寄生物的尖叫：从弱怪里随机召唤 1 个，放到空着的列；没有空列就召唤失败。"],
+        ["B1-11", "怠惰幼兽逃跑 = 离开战斗、不算击杀；如果它是最后一个敌人，战斗照样胜利、照样发奖励。"],
+        ["B1-12", "怠惰幼兽苏醒后，移动到离它最近、正对完好卡槽的空列。"],
+        ["B1-13", "事件里的「获得1张诅咒」目前就是颤蚓幼虫；「无助的男孩」给的奇物就是老旧的根付。"],
+        ["B1-14", "老旧的根付：卡槽被打爆时照常扣血，然后立刻把这个卡槽修好（回满 6 血），奇物随后失效。"],
+        ["B1-15", "黄金锤（牌）：留在手里时，每个回合结束费用 -1（本场战斗有效，最低 0）；打出后修好 1 个被打爆的卡槽，回满血。"],
+        ["B1-16", "逐梦者之戒：一整层（到打完这层 Boss）都没有卡槽被打爆，就在这一层结束时获得。"],
+        ["B1-17", "流觞诗会：本场战斗里累计打出过火焰、冰霜、暗影、幻术牌各至少 1 张，就获得 3 费、抽 3 张，然后重新计数。"],
+        ["B1-18", "寒霜之触：拿到它时，卡组里的冰霜之触直接变成寒霜之触，不是额外多一张。"],
+        ["B1-19", "混沌之型：每个回合结束时，免费再结算一次你这回合打出的最后一张牌。"],
+        ["B1-20", "灵视展示的牌，这回合没用掉就留在牌库顶。"]
+      ]
+    },
+    {
+      id: "B2", title: "卡槽与伤害",
+      intro: "这一节和下一节最影响战斗原型，建议先答。",
+      items: [
+        {
+          id: "B2-01", type: "radio", q: "卡槽被打爆时，玩家掉多少血？",
+          src: "卡槽被打爆以后对玩家造成等同于卡槽血量的伤害（你的消息）",
+          ex: "例子：一个卡槽只剩 2 血，被打了 5 点。",
+          opts: [
+            ["a", "掉 6（卡槽血量上限），多出来的 3 点作废", true],
+            ["b", "掉 9（6 + 多出来的 3）"],
+            ["c", "只掉多出来的 3"],
+            OTHER
+          ]
+        },
+        {
+          id: "B2-02", type: "radio", q: "敌人打向一个已经被打爆的卡槽时会怎样？",
+          src: "即冻术：在一个被破坏的卡槽上放置4点护甲",
+          opts: [
+            ["a", "伤害直接打到玩家血量上（所以给被破坏的卡槽放护甲才有意义）", true],
+            ["b", "改打旁边或随机一个完好的卡槽"],
+            ["c", "这次攻击落空"],
+            OTHER
+          ]
+        },
+        {
+          id: "B2-03", type: "radio", q: "被打爆的卡槽什么时候恢复？",
+          src: "黄金锤：立即修复1个卡槽　逐梦者之戒：一层内没有卡槽被破坏",
+          opts: [
+            ["a", "每场战斗结束全部修好、回满血；只有玩家血量的损失带到下一场", true],
+            ["b", "一直坏着，直到在阳台修理，或用黄金锤之类的东西修好"],
+            ["c", "战斗结束时修好被打爆的卡槽，但没爆的卡槽掉的血不回"],
+            OTHER
+          ]
+        },
+        {
+          id: "B2-04", type: "radio", q: "敌人站在哪，打哪个卡槽？",
+          src: "回声：每次行动后会随机向左侧或者右侧移动1格　怠惰幼兽：苏醒时移动到有卡槽的地方",
+          opts: [
+            ["a", "敌方有 5 列，正对玩家的 5 个卡槽，每列最多站 1 个敌人；敌人打正对面的卡槽", true],
+            ["b", "同上，但一列可以站好几个敌人"],
+            ["c", "不分列：攻击目标随机，或者在意图上标出要打哪个卡槽"],
+            OTHER
+          ]
+        }
+      ]
+    },
+    {
+      id: "B3", title: "出牌与护甲",
+      intro: "B3-01 决定测试网页怎么操作，最需要你拍板。",
+      items: [
+        {
+          id: "B3-01", type: "radio", q: "打出一张牌时，要不要把它放进卡槽？",
+          src: "不在场证明：无视所在卡槽受到的下一次伤害　混沌之型：所在卡槽恒为你使用的最后一张牌的复制",
+          opts: [
+            ["a", "要：每张牌都拖进一个卡槽才算打出，留在那里到回合结束；一个卡槽一回合只放 1 张", true],
+            ["b", "只有防御牌和能力牌要放进卡槽，攻击牌和技能牌直接打出"],
+            ["c", "不放：牌都直接打出，「所在卡槽」只是说效果加给哪个卡槽"],
+            OTHER
+          ]
+        },
+        {
+          id: "B3-02", type: "radio", q: "单体牌（打击、火球术、冰霜之触）的目标怎么选？",
+          src: "十字火焰：对1个敌人以及相邻敌人造成2点伤害",
+          opts: [
+            ["a", "任选一个敌人", true],
+            ["b", "只能打这张牌所在卡槽正对面的敌人"],
+            OTHER
+          ]
+        },
+        {
+          id: "B3-03", type: "radio", q: "护甲加在哪？",
+          src: "冰墙术：可以保护全部区域　打滑：你所有卡槽内的防御值向右移动1格",
+          opts: [
+            ["a", "只加在一个卡槽上（牌所在的或你选的卡槽），只保护这个卡槽", true],
+            ["b", "加在玩家身上，保护所有卡槽"],
+            OTHER
+          ]
+        },
+        {
+          id: "B3-04", type: "radio", q: "护甲什么时候清零？",
+          opts: [
+            ["a", "下个玩家回合开始时清零（和杀戮尖塔的格挡一样）", true],
+            ["b", "一直留着，直到被打掉或战斗结束"],
+            OTHER
+          ]
+        },
+        {
+          id: "B3-05", type: "radio", q: "冰墙术的「保护全部区域」怎么算？",
+          src: "冰墙术：获得4点护甲，可以保护全部区域",
+          opts: [
+            ["a", "一面 4 点的公共护盾：任何卡槽挨打都先扣它，扣完为止", true],
+            ["b", "5 个卡槽各得 4 点护甲"],
+            OTHER
+          ]
+        },
+        {
+          id: "B3-06", type: "radio", q: "持续生效的牌（暗影塑形、能力牌）打出后在哪？",
+          src: "暗影塑形：持续3回合，在你的回合结束时，获得1点护甲",
+          opts: [
+            ["a", "留在卡槽里占着位置，直到效果结束（能力牌占一整场）；这个卡槽被打爆，效果就没了", true],
+            ["b", "不占卡槽，效果挂在玩家身上"],
+            OTHER
+          ]
+        }
+      ]
+    },
+    {
+      id: "B4", title: "敌人",
+      items: [
+        {
+          id: "B4-01", type: "radio", q: "回声的 D20 怎么用？",
+          src: "开始时随机投掷1枚D20决定位置，每次攻击的点位也由D20决定",
+          opts: [
+            ["a", "D20 换算成 5 列（1–4 第 1 列，5–8 第 2 列……）。开场掷一次定站位；每次攻击再掷一次决定打哪个卡槽，不一定是正对面", true],
+            ["b", "只在开场掷一次定站位，之后照常打正对面"],
+            ["c", "敌方真的有 20 个位置（写在补充里）"],
+            OTHER
+          ]
+        },
+        {
+          id: "B4-02", type: "radio", q: "金属聚物「受到伤害后获得+1力量」，力量留多久？",
+          src: "在本回合内，受到伤害后获得+1力量",
+          opts: [
+            ["a", "每挨一次打 +1 力量，一直留到战斗结束", true],
+            ["b", "每挨一次打 +1 力量，它这次行动完就清空"],
+            ["c", "每回合最多 +1"],
+            OTHER
+          ]
+        },
+        {
+          id: "B4-03", type: "radio", q: "红视-2000 什么时候攻击？",
+          src: "无动作（玩家攻击后变成攻击）",
+          opts: [
+            ["a", "玩家这回合打出过任意攻击牌，它就攻击（2 点）；没打就不动", true],
+            ["b", "它自己挨打以后才开始攻击，之后一直攻击"],
+            ["c", "玩家第一次打出攻击牌以后，它一直攻击"],
+            OTHER
+          ]
+        },
+        {
+          id: "B4-04", type: "radio", q: "软泥蛙塞进卡槽的淤泥有什么效果？",
+          src: "喷涌会在一个随机卡槽内塞一团淤泥，1回合后移除",
+          opts: [
+            ["a", "占住这个卡槽，下回合不能往里放牌", true],
+            OTHER
+          ]
+        },
+        {
+          id: "B4-05", type: "radio", q: "镜中人怎么打？",
+          src: "随机出现在任意位置；每个玻璃有7点血量，打碎玻璃后将一张「厄运」置入玩家的牌库。生命：???",
+          opts: [
+            ["a", "5 列各有一面镜子（7 血）。镜中人每回合随机躲进其中一面，从那里攻击；要先打碎它所在的镜子才能伤到本体；每打碎一面镜子都往牌库塞 1 张厄运", true],
+            OTHER
+          ],
+          notePh: "镜中人实际多少血？「???」是要对玩家隐藏吗？"
+        },
+        {
+          id: "B4-06", type: "radio", q: "血色魅影的卡槽怎么打？",
+          src: "每个卡槽16血，打爆以后本体会受到等量伤害",
+          opts: [
+            ["a", "只能打魅影的卡槽，不能直接打本体；打爆的卡槽之后一直空着，魅影越打越弱", true],
+            ["b", "只能打卡槽，但打爆的卡槽下回合恢复"],
+            ["c", "卡槽和本体都能打"],
+            OTHER
+          ]
+        },
+        {
+          id: "B4-07", type: "radio", q: "血色魅影的意图牌怎么结算？",
+          src: "抽取5张牌放到自己的卡槽内，作为意图",
+          opts: [
+            ["a", "每张意图作用在它所在的那一列：攻击 = 打玩家同一列的卡槽 5 点（表里 atk 5）；格挡3 = 这个魅影卡槽 +3 护甲", true],
+            OTHER
+          ]
+        }
+      ]
+    },
+    {
+      id: "B5", title: "卡牌细节",
+      items: [
+        {
+          id: "B5-01", type: "radio", q: "雪葬里的「卡槽」指谁的卡槽？",
+          src: "雪葬：消灭1个寒冷计数高于生命的敌人或卡槽",
+          opts: [
+            ["a", "血色魅影的卡槽（寒冷也能挂在魅影卡槽上）", true],
+            ["b", "玩家自己的卡槽（比如清掉被诅咒占住的卡槽）"],
+            ["c", "两种都算"],
+            OTHER
+          ]
+        },
+        {
+          id: "B5-02", type: "radio", q: "颤蚓幼虫（诅咒）放进卡槽后有什么坏处？",
+          src: "抽到后，在你的操控下置入你的卡槽，卡槽被毁后将其移除",
+          opts: [
+            ["a", "一直占着这个卡槽，不能往里放牌；这个卡槽被打爆时，诅咒从卡组里永久删掉", true],
+            ["b", "一直占着这个卡槽；卡槽被打爆只在本场战斗移除，下场还会抽到"],
+            OTHER
+          ]
+        },
+        {
+          id: "B5-03", type: "radio", q: "影卒（1/4）召唤出来在哪、做什么？",
+          src: "异界来客：召唤1个1/4的影卒　彼界之门：在你的回合开始时，召唤1个1/4的影卒",
+          opts: [
+            ["a", "占一个空卡槽，替这个卡槽挡伤害（4 血）；每个回合结束打正对面的敌人 1 点；被打死就消失", true],
+            OTHER
+          ]
+        }
+      ]
+    },
+    {
+      id: "B6", title: "地图与经济",
+      intro: "做完整一局时才用得上，可以晚点再答。",
+      items: [
+        {
+          id: "B6-01", type: "radio", q: "「阳台」是什么节点？",
+          opts: [
+            ["a", "休息点：回血或升级 1 张牌，二选一", true],
+            OTHER
+          ],
+          notePh: "比如回多少血"
+        },
+        {
+          id: "B6-02", type: "radio", q: "地图怎么走？",
+          opts: [
+            ["a", "像杀戮尖塔：几条分叉路线，自己选路，走到顶打 Boss", true],
+            ["b", "一条线走到底"],
+            OTHER
+          ],
+          notePh: "一层大概几个节点？各类节点大概占多少？"
+        },
+        {
+          id: "B6-03", type: "radio", q: "「战斗」和「挑战」分别打什么？",
+          opts: [
+            ["a", "战斗：2–3 个弱怪，或 1 个强怪带 1 个弱怪；挑战：精英（目前只有镜中人）", true],
+            OTHER
+          ]
+        },
+        {
+          id: "B6-04", type: "radio", q: "奖励怎么发？",
+          opts: [
+            ["a", "战斗：卡牌 3 选 1 + 货币；挑战：再加 1 个奇物；宝箱：1 个奇物；Boss：梦想卡 3 选 1。梦想卡平时也会小概率出现在卡牌奖励里", true],
+            OTHER
+          ]
+        },
+        {
+          id: "B6-05", type: "fields", q: "货币：奇物售价 4、6 用的是什么？",
+          ex: "灰字是我的临时方案，不填就按它来。",
+          fields: [
+            ["name", "货币名称", "如：金币"],
+            ["start", "开局有", "如：0"],
+            ["fight", "普通战斗掉", "如：2"],
+            ["elite", "挑战掉", "如：4"],
+            ["boss", "Boss 掉", "如：0"]
+          ]
+        },
+        {
+          id: "B6-06", type: "multi", q: "商店卖什么？（多选）",
+          ex: "我的猜测：卡牌、奇物、删牌。",
+          opts: [
+            ["card", "卡牌"], ["relic", "奇物"], ["remove", "删牌"],
+            ["upgrade", "升级卡牌"], ["repair", "修复卡槽"], ["heal", "回血"]
+          ],
+          notePh: "价格大概多少"
+        },
+        {
+          id: "B6-07", type: "radio", q: "「显眼的电梯」里的「前往一个新的停车场」是什么意思？",
+          src: "进入电梯---失去2点生命 / 无事发生 / 删去2张牌，随机获得2张牌，前往一个新的停车场",
+          opts: [
+            ["a", "三种结果各 1/3。第三种会重新生成这一区域剩下的地图，从新地图的起点继续", true],
+            ["b", "三种结果各 1/3。第三种直接跳到下一个区域"],
+            OTHER
+          ]
+        }
+      ]
+    },
+    {
+      id: "B7", title: "表里空着的",
+      intro: "写不出来就留空，我先用灰字里的临时方案。",
+      items: [
+        { id: "B7-01", type: "fill", q: "厄运（镜中人打碎玻璃后塞进牌库）的效果", ph: "临时方案：无法打出；回合结束时还在手里就失去 1 点生命；战斗结束后移除" },
+        { id: "B7-02", type: "fill", q: "回声的「嚎叫」", ph: "临时方案：所有敌人获得 1 点力量" },
+        { id: "B7-03", type: "fill", q: "血色魅影的「尘埃」", ph: "临时方案：往玩家弃牌堆塞 1 张「尘埃」（无法打出，战斗结束后移除）" },
+        { id: "B7-04", type: "fill", q: "《雪女》和其他没写获得方式的奇物从哪来", ph: "临时方案：扩充奇物出现在宝箱、商店和挑战奖励里；《雪女》先放进宝箱池" }
+      ]
+    },
+    {
+      id: "B8", title: "测试网页",
+      items: [
+        {
+          id: "B8-01", type: "radio", q: "第一版测试网页先做到哪？", guessLabel: "我的建议",
+          opts: [
+            ["a", "战斗沙盒：自选敌人组合和卡组，反复打，先测数值和手感", true],
+            ["b", "第一区域完整一局：地图 → 战斗 → 奖励 → 商店/奇遇 → Boss"],
+            ["c", "两个都要，先做战斗沙盒"],
+            OTHER
+          ]
+        },
+        {
+          id: "B8-02", type: "radio", q: "主要在什么设备上测？",
+          opts: [["pc", "电脑浏览器"], ["phone", "手机"], ["both", "都要"]]
+        },
+        {
+          id: "B8-03", type: "multi", q: "需要哪些调试功能？（多选）",
+          opts: [
+            ["enemies", "自选敌人组合"], ["deck", "任意加牌、删牌"], ["god", "锁血、无限费用"],
+            ["log", "战斗日志（每一步伤害怎么算的）"], ["tune", "现场改数值（血量、卡槽血量、费用、抽牌数）"],
+            ["seed", "固定随机种子，方便复现"]
+          ]
+        },
+        {
+          id: "B8-04", type: "radio", q: "画面要做到什么程度？", guessLabel: "我的建议",
+          opts: [
+            ["a", "先纯功能：方块加文字，专心测玩法", true],
+            ["b", "要有一点停车场怪谈的氛围"],
+            OTHER
+          ]
+        },
+        { id: "B8-05", type: "fill", q: "还有什么想说的", ph: "比如参考哪款游戏的手感、哪些数值想重点测" }
+      ]
+    }
+  ];
+
+  for (const lv of LEVELS) {
+    lv.items = lv.items.map(it => Array.isArray(it) ? { id: it[0], type: "check", text: it[1] } : it);
+  }
+  const ITEMS = LEVELS.flatMap(lv => lv.items);
+  const BY_ID = Object.fromEntries(ITEMS.map(it => [it.id, it]));
+  const STORAGE_KEY = "qinwu-mechanics-questionnaire-v1";
+
+  const state = { answers: {}, status: "draft", submittedAt: null, updatedAt: 0 };
+  let docRef = null;
+  let storeMode = "connecting"; // connecting | ready | local | error
+  let saveTimer = null, saving = false, pendingSave = false, retried = false, userTouched = false;
+
+  const $ = sel => document.querySelector(sel);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const guessOf = it => (it.opts || []).find(o => o[2]);
+  const reduceMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- 渲染 ---------- */
+  function optHtml(qid, k, text, tag, isDefault) {
+    return `<label class="opt${isDefault ? " def" : ""}" for="${qid}-${k}">`
+      + `<input type="radio" name="${qid}" id="${qid}-${k}" value="${k}" data-q="${qid}" data-k="v">`
+      + `<span class="opt-t">${esc(text)}</span>${tag ? `<span class="guess">${esc(tag)}</span>` : ""}</label>`;
+  }
+  function noteHtml(it) {
+    return `<label class="note" for="${it.id}-note">补充（可选）`
+      + `<input type="text" id="${it.id}-note" data-q="${it.id}" data-k="note" maxlength="300" placeholder="${esc(it.notePh || "")}"></label>`;
+  }
+  function renderItem(it) {
+    if (it.type === "check") {
+      return `<div class="chk" id="q-${it.id}">`
+        + `<span class="qid">${it.id}</span><p id="h-${it.id}">${esc(it.text)}</p>`
+        + `<span class="seg" role="radiogroup" aria-labelledby="h-${it.id}">`
+        + `<input type="radio" name="${it.id}" id="${it.id}-yes" value="yes" data-q="${it.id}" data-k="v"><label class="yes" for="${it.id}-yes">对</label>`
+        + `<input type="radio" name="${it.id}" id="${it.id}-no" value="no" data-q="${it.id}" data-k="v"><label class="no" for="${it.id}-no">不对</label>`
+        + `</span>`
+        + `<input class="fix" type="text" id="${it.id}-note" data-q="${it.id}" data-k="note" maxlength="300" placeholder="正确的说法是……" aria-label="${it.id} 正确的说法" hidden>`
+        + `</div>`;
+    }
+    let html = `<div class="q-head"><span class="qid">${it.id}</span><h3 id="h-${it.id}">${esc(it.q)}</h3></div>`;
+    if (it.src) html += `<p class="src"><em>表里</em>${esc(it.src)}</p>`;
+    if (it.ex) html += `<p class="ex">${esc(it.ex)}</p>`;
+    if (it.type === "radio") {
+      const label = it.guessLabel || "我的猜测";
+      const opts = it.opts.map(o => optHtml(it.id, o[0], o[1], o[2] ? label : "", false));
+      if (guessOf(it)) opts.push(optHtml(it.id, "default", `还没想好，先按「${label}」做`, "", true));
+      html += `<div class="opts" role="radiogroup" aria-labelledby="h-${it.id}">${opts.join("")}</div>` + noteHtml(it);
+    } else if (it.type === "multi") {
+      html += `<div class="multi" role="group" aria-labelledby="h-${it.id}">`
+        + it.opts.map(o => `<label class="tick" for="${it.id}-${o[0]}"><input type="checkbox" id="${it.id}-${o[0]}" value="${o[0]}" data-q="${it.id}" data-k="multi">${esc(o[1])}</label>`).join("")
+        + `</div>` + noteHtml(it);
+    } else if (it.type === "fields") {
+      html += `<div class="fields">`
+        + it.fields.map(f => `<label for="${it.id}-${f[0]}">${esc(f[1])}<input type="text" id="${it.id}-${f[0]}" data-q="${it.id}" data-k="field" data-f="${f[0]}" maxlength="40" placeholder="${esc(f[2])}"></label>`).join("")
+        + `</div>`;
+    } else if (it.type === "fill") {
+      html += `<textarea id="${it.id}-text" data-q="${it.id}" data-k="text" maxlength="1000" placeholder="${esc(it.ph)}" aria-labelledby="h-${it.id}"></textarea>`;
+    }
+    return `<article class="q" id="q-${it.id}">${html}</article>`;
+  }
+  function render() {
+    $("#levels").innerHTML = LEVELS.map(lv => {
+      const inner = lv.items[0].type === "check"
+        ? `<div class="checks">${lv.items.map(renderItem).join("")}</div>`
+          + `<div class="check-tools"><button type="button" class="btn-ghost" id="all-yes">剩下没点的都算「对」</button></div>`
+        : lv.items.map(renderItem).join("");
+      return `<section class="level" id="${lv.id}" aria-labelledby="t-${lv.id}">`
+        + `<div class="level-head"><span class="sign">${lv.id}</span><h2 id="t-${lv.id}">${esc(lv.title)}</h2></div>`
+        + `<div class="stripe" aria-hidden="true"></div>`
+        + (lv.intro ? `<p class="level-intro">${esc(lv.intro)}</p>` : "")
+        + inner + `</section>`;
+    }).join("");
+    $("#chips").innerHTML = LEVELS.map(lv =>
+      `<button type="button" class="chip" data-go="${lv.id}"><b>${lv.id}</b><span data-count="${lv.id}"></span></button>`).join("");
+    $("#total-q").textContent = ITEMS.length;
+  }
+
+  /* ---------- 状态 ---------- */
+  function isAnswered(it) {
+    const a = state.answers[it.id];
+    if (!a) return false;
+    if (it.type === "check" || it.type === "radio") return !!a.v;
+    if (it.type === "multi") return Array.isArray(a.v) && a.v.length > 0;
+    if (it.type === "fields") return !!a.v && Object.values(a.v).some(x => String(x).trim());
+    if (it.type === "fill") return !!(a.v && String(a.v).trim());
+    return false;
+  }
+  function progress() {
+    return { answered: ITEMS.filter(isAnswered).length, total: ITEMS.length };
+  }
+  function updateProgress() {
+    const { answered, total } = progress();
+    $("#prog").textContent = `已答 ${answered} / ${total}`;
+    $("#meter").style.width = (answered / total * 100).toFixed(1) + "%";
+    for (const lv of LEVELS) {
+      const n = lv.items.filter(isAnswered).length;
+      const el = document.querySelector(`[data-count="${lv.id}"]`);
+      el.textContent = `${n}/${lv.items.length}`;
+      el.parentElement.classList.toggle("done", n === lv.items.length);
+    }
+    const left = total - answered;
+    $("#sum").textContent = left
+      ? `已答 ${answered} / ${total}。没答的 ${left} 题，我会按「我的猜测」处理，之后随时可以回来改。`
+      : `全部 ${total} 题都答完了。`;
+    $("#send").textContent = state.status === "submitted" ? "再次提交" : "提交给 Claude";
+  }
+  function syncFix(qid) {
+    const fix = document.getElementById(qid + "-note");
+    const a = state.answers[qid] || {};
+    if (fix) fix.hidden = a.v !== "no";
+  }
+  function sanitize(raw) {
+    const out = {};
+    if (!raw || typeof raw !== "object") return out;
+    for (const it of ITEMS) {
+      const a = raw[it.id];
+      if (!a || typeof a !== "object") continue;
+      const o = {};
+      if (typeof a.note === "string") o.note = a.note.slice(0, 300);
+      if (it.type === "multi") {
+        if (Array.isArray(a.v)) o.v = a.v.filter(x => typeof x === "string" && it.opts.some(op => op[0] === x));
+      } else if (it.type === "fields") {
+        if (a.v && typeof a.v === "object") {
+          o.v = {};
+          for (const f of it.fields) if (typeof a.v[f[0]] === "string") o.v[f[0]] = a.v[f[0]].slice(0, 40);
+        }
+      } else if (typeof a.v === "string") {
+        o.v = a.v.slice(0, 1000);
+      }
+      out[it.id] = o;
+    }
+    return out;
+  }
+  function applyStateToDom() {
+    for (const it of ITEMS) {
+      const a = state.answers[it.id] || {};
+      const note = document.getElementById(it.id + "-note");
+      if (note) note.value = a.note || "";
+      if (it.type === "check" || it.type === "radio") {
+        document.querySelectorAll(`input[name="${it.id}"]`).forEach(r => { r.checked = r.value === a.v; });
+        if (it.type === "check") syncFix(it.id);
+      } else if (it.type === "multi") {
+        const picked = new Set(Array.isArray(a.v) ? a.v : []);
+        document.querySelectorAll(`input[data-q="${it.id}"][data-k="multi"]`).forEach(c => { c.checked = picked.has(c.value); });
+      } else if (it.type === "fields") {
+        for (const f of it.fields) document.getElementById(`${it.id}-${f[0]}`).value = (a.v && a.v[f[0]]) || "";
+      } else if (it.type === "fill") {
+        document.getElementById(it.id + "-text").value = a.v || "";
+      }
+    }
+    updateProgress();
+  }
+
+  function onInput(e) {
+    const t = e.target;
+    const qid = t.dataset && t.dataset.q;
+    if (!qid || !BY_ID[qid]) return;
+    const it = BY_ID[qid];
+    const a = Object.assign({}, state.answers[qid]);
+    switch (t.dataset.k) {
+      case "v": a.v = t.value; break;
+      case "note": a.note = t.value; break;
+      case "text": a.v = t.value; break;
+      case "multi":
+        a.v = Array.from(document.querySelectorAll(`input[data-q="${qid}"][data-k="multi"]:checked`), x => x.value);
+        break;
+      case "field": a.v = Object.assign({}, a.v, { [t.dataset.f]: t.value }); break;
+      default: return;
+    }
+    state.answers[qid] = a;
+    if (it.type === "check") syncFix(qid);
+    if (e.type === "change" && t.dataset.k === "v" && (t.value === "no" || t.value === "other")) {
+      const note = document.getElementById(qid + "-note");
+      if (note) note.focus();
+    }
+    userTouched = true;
+    updateProgress();
+    scheduleSave();
+  }
+
+  /* ---------- 保存 ---------- */
+  function timeNow() {
+    try { return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }); }
+    catch (e) { return ""; }
+  }
+  function setStatus(kind, info) {
+    const text = {
+      connecting: "正在连接存储……答案先存在这台设备上。",
+      slow: "存储暂时连不上，答案先存在这台设备上。",
+      pending: "有改动，马上自动保存……",
+      saved: "已自动保存" + (info ? " · " + info : ""),
+      local: "这里存不到云端，答案只存在这台设备的浏览器里。填完请点最下面的「复制答案」发给 Claude。",
+      error: "保存失败" + (info ? "（" + info + "）" : "") + "。答案还在这台设备上，下次改动时会再试。"
+    }[kind];
+    const el = $("#save");
+    el.textContent = text;
+    el.dataset.kind = kind;
+  }
+  function payload() {
+    const { answered, total } = progress();
+    return {
+      schema: 1,
+      status: state.status,
+      updatedAt: new Date(state.updatedAt || Date.now()).toISOString(),
+      submittedAt: state.submittedAt || null,
+      answered, total,
+      answers: state.answers
+    };
+  }
+  function saveLocal() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* 存不了就算了 */ }
+  }
+  function scheduleSave() {
+    state.updatedAt = Date.now();
+    saveLocal();
+    clearTimeout(saveTimer);
+    if (storeMode === "local") { setStatus("local"); return; }
+    if (storeMode !== "ready") return;
+    setStatus("pending");
+    saveTimer = setTimeout(flushSave, 1200);
+  }
+  async function flushSave() {
+    if (!docRef) return;
+    if (saving) { pendingSave = true; return; }
+    saving = true;
+    try {
+      await docRef.set(payload());
+      retried = false;
+      setStatus("saved", timeNow());
+    } catch (e) {
+      const code = (e && e.code) || "unknown";
+      if (code === "unavailable" && !retried) {
+        retried = true;
+        setTimeout(flushSave, 1500 + Math.random() * 1500);
+      } else {
+        setStatus("error", code);
+      }
+    } finally {
+      saving = false;
+      if (pendingSave) { pendingSave = false; flushSave(); }
+    }
+  }
+  function waitIdle() {
+    return new Promise(resolve => {
+      const tick = () => saving ? setTimeout(tick, 100) : resolve();
+      tick();
+    });
+  }
+  async function waitForClaude(ms) {
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+      if (window.claude && typeof window.claude.use === "function") return window.claude;
+      await new Promise(r => setTimeout(r, 150));
+    }
+    return null;
+  }
+  async function initStore() {
+    setStatus("connecting");
+    const claude = await waitForClaude(2000);
+    if (!claude) { storeMode = "local"; setStatus("local"); return; }
+    const slowTimer = setTimeout(() => { if (storeMode === "connecting") setStatus("slow"); }, 10000);
+    try {
+      const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
+      if (!db) { clearTimeout(slowTimer); storeMode = "local"; setStatus("local"); return; }
+      let uid = null;
+      try { uid = user ? await user.id() : null; } catch (e) { uid = null; }
+      const seg = String(uid || "anon").replace(/[^A-Za-z0-9_\-.~:@+]/g, "_").slice(0, 120) || "anon";
+      const ref = db.doc("responses/" + (seg === "." || seg === ".." ? "anon" : seg));
+      const snap = await ref.get();
+      clearTimeout(slowTimer);
+      docRef = ref;
+      storeMode = "ready";
+      const remote = snap.exists ? snap.data() : null;
+      const remoteTime = remote ? (Date.parse(remote.updatedAt || "") || 0) : 0;
+      if (remote && !userTouched && remoteTime >= state.updatedAt) {
+        state.answers = sanitize(remote.answers);
+        state.status = remote.status === "submitted" ? "submitted" : "draft";
+        state.submittedAt = typeof remote.submittedAt === "string" ? remote.submittedAt : null;
+        state.updatedAt = remoteTime;
+        saveLocal();
+        applyStateToDom();
+        setStatus("saved", "已读取上次的答案");
+      } else if (state.updatedAt > remoteTime && Object.keys(state.answers).length) {
+        await flushSave();
+      } else {
+        setStatus("saved", "还没有改动");
+      }
+    } catch (e) {
+      clearTimeout(slowTimer);
+      storeMode = "local";
+      setStatus("error", (e && e.code) || "unknown");
+    }
+  }
+
+  /* ---------- 提交与复制 ---------- */
+  function describe(it, a) {
+    let s;
+    if (it.type === "check") {
+      s = a.v === "yes" ? "对" : a.v === "no" ? "不对" : "（未答）";
+      if (a.v === "no" && a.note) s += " → " + a.note;
+      return s;
+    }
+    if (it.type === "radio") {
+      if (a.v === "default") { const g = guessOf(it); s = "先按猜测：" + (g ? g[1] : ""); }
+      else { const o = it.opts.find(op => op[0] === a.v); s = o ? o[1] : "（未答）"; }
+    } else if (it.type === "multi") {
+      s = (Array.isArray(a.v) ? a.v : []).map(k => (it.opts.find(op => op[0] === k) || [k, k])[1]).join("、") || "（未选）";
+    } else if (it.type === "fields") {
+      s = it.fields.map(f => `${f[1]}：${(a.v && a.v[f[0]]) || "—"}`).join("；");
+    } else {
+      s = (a.v && String(a.v).trim()) || (String(it.ph).startsWith("临时方案") ? "（未填，用临时方案）" : "（未填）");
+    }
+    if (a.note) s += " ｜补充：" + a.note;
+    return s;
+  }
+  function answersText() {
+    const { answered, total } = progress();
+    const lines = [`【秦雾机制问卷】已答 ${answered}/${total}`];
+    for (const lv of LEVELS) {
+      lines.push("", `${lv.id} ${lv.title}`);
+      for (const it of lv.items) {
+        const title = it.type === "check" ? it.text.slice(0, 22) + "……" : it.q;
+        lines.push(`${it.id} ${title}：${describe(it, state.answers[it.id] || {})}`);
+      }
+    }
+    return lines.join("\n");
+  }
+  function showResult(text, warn) {
+    const el = $("#result");
+    el.textContent = text;
+    el.classList.toggle("warn", !!warn);
+  }
+  function showCopyBox(text) {
+    const box = $("#copybox");
+    box.hidden = false;
+    box.value = text;
+    box.focus();
+    box.select();
+  }
+  async function submit() {
+    const btn = $("#send");
+    state.status = "submitted";
+    state.submittedAt = new Date().toISOString();
+    state.updatedAt = Date.now();
+    saveLocal();
+    clearTimeout(saveTimer);
+    updateProgress();
+    if (storeMode !== "ready" || !docRef) {
+      showResult("这个页面存不了答案。请点「复制答案」，粘贴到和 Claude 的对话里发送。", true);
+      showCopyBox(answersText());
+      return;
+    }
+    btn.disabled = true;
+    showResult("正在提交……");
+    try {
+      await waitIdle();
+      saving = true;
+      await docRef.set(payload());
+    } catch (e) {
+      saving = false;
+      btn.disabled = false;
+      showResult(`提交没成功（${(e && e.code) || "unknown"}）。答案还在这台设备上：稍后再点一次，或点「复制答案」发给 Claude。`, true);
+      return;
+    }
+    saving = false;
+    setStatus("saved", timeNow());
+    const { answered, total } = progress();
+    let notified = false;
+    try {
+      const comments = await window.claude.use("comments");
+      if (comments && typeof comments.canSendToClaude === "function"
+          && (await comments.canSendToClaude()) === "available") {
+        const anchor = await comments.anchorFor(btn);
+        await comments.sendToClaude({ anchor, text: `机制问卷已提交：答了 ${answered}/${total} 题，请读取答案继续。` });
+        notified = true;
+      }
+    } catch (e) { notified = false; }
+    btn.disabled = false;
+    showResult(notified
+      ? "已提交，也通知了 Claude。之后想改，改完再点一次「再次提交」。"
+      : "已提交保存。回到和 Claude 的对话里说一声「填好了」就行。");
+  }
+  async function copyAnswers() {
+    const text = answersText();
+    try {
+      await navigator.clipboard.writeText(text);
+      showResult("已复制。粘贴到和 Claude 的对话里发送即可。");
+    } catch (e) {
+      showCopyBox(text);
+      showResult("浏览器不让直接复制：答案放在下面的框里并选中了，按 Ctrl+C（手机上长按）复制。");
+    }
+  }
+
+  /* ---------- 启动 ---------- */
+  render();
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (saved && typeof saved === "object") {
+      state.answers = sanitize(saved.answers);
+      state.status = saved.status === "submitted" ? "submitted" : "draft";
+      state.submittedAt = typeof saved.submittedAt === "string" ? saved.submittedAt : null;
+      state.updatedAt = Number(saved.updatedAt) || 0;
+    }
+  } catch (e) { /* 没有本地草稿 */ }
+  applyStateToDom();
+
+  const form = $("#form");
+  form.addEventListener("input", onInput);
+  form.addEventListener("change", onInput);
+  form.addEventListener("submit", e => e.preventDefault());
+  $("#all-yes").addEventListener("click", () => {
+    let changed = false;
+    for (const it of LEVELS[0].items) {
+      if (!isAnswered(it)) { state.answers[it.id] = Object.assign({}, state.answers[it.id], { v: "yes" }); changed = true; }
+    }
+    if (changed) { userTouched = true; applyStateToDom(); scheduleSave(); }
+  });
+  $("#chips").addEventListener("click", e => {
+    const b = e.target.closest("[data-go]");
+    if (!b) return;
+    document.getElementById(b.dataset.go).scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
+  });
+  $("#send").addEventListener("click", submit);
+  $("#copy").addEventListener("click", copyAnswers);
+  initStore();
+})();
+</script>
+</body>
+</html>
