@@ -14,6 +14,15 @@
 
   function rngFor(run, tag) { return QW.rng.create(`${run.seed}:${tag}:${run.rngCount++}`); }
 
+  /* 对局记录：每一步都记进 run.record.timeline，每场战斗的摘要记进 run.record.fights。 */
+  const now = () => new Date().toISOString();
+  function track(run, kind, text, data) {
+    if (!run.record) return;
+    const entry = { at: now(), floor: run.floor, kind, text };
+    if (data) entry.data = data;
+    run.record.timeline.push(entry);
+  }
+
   /* ---------- 地图 ----------
      一共 floors 层：第 1 层固定打小怪，倒数第 2 层固定阳台，最后一层 Boss，rewardFloor 那一层固定是宝箱。
      其余每层 3 个选项，可以任选一个往上走。
@@ -134,7 +143,8 @@
       removals: 0, firstReward: true, nextStrength: 0, usedEvents: [], fights: 0,
       mapGen: 0, map: null, pos: null, floor: 0, visited: [], areaSlotLost: false,
       lockHp: false, freeTravel: false,
-      screen: { kind: "map" }, queue: [], result: null,
+      screen: { kind: "map" }, queue: [], result: null, survey: null,
+      record: { id: opts.id || `run-${opts.seed}-${Date.now().toString(36)}`, startedAt: opts.startedAt || now(), timeline: [], fights: [] },
       stats: { battles: 0, elites: 0, bosses: 0, hpLost: 0, turns: 0, goldEarned: 0, goldSpent: 0, cardsAdded: 0, cardsRemoved: 0, relics: [], path: [] }
     };
     run.map = generateMap(run.seed, cfg, "0", 1);
@@ -162,6 +172,7 @@
     run.floor = node.floor;
     run.visited.push(id);
     run.stats.path.push(node.type);
+    track(run, "enter", `第 ${node.floor} 层：${D.NODE_TYPES[node.type]}`, { node: id, type: node.type });
     let type = node.type;
     if (type === "event") {
       const ev = pickEvent(run);
@@ -219,6 +230,10 @@
     run.stats.hpLost += c.stats.hpLost;
     run.stats.turns += c.turn;
     run.nextStrength = 0;
+    const sum = c.summary();
+    if (run.record) run.record.fights.push(Object.assign({ floor: run.floor, type: sc.type, endedAt: now() }, sum));
+    const what = sc.type === "boss" ? "Boss 战" : D.NODE_TYPES[sc.type];
+    track(run, "fight", `${what}${c.result === "win" ? "胜利" : "失败"}（${sum.enemies.join("、")}）：${c.turn} 回合，掉了 ${c.stats.hpLost} 血`);
     if (c.result !== "win") {
       run.result = "lose";
       run.queue = [];
@@ -289,6 +304,7 @@
     if (!id || run.relics[id]) return;
     run.relics[id] = true;
     run.stats.relics.push(id);
+    track(run, "relic", `获得奇物「${D.RELICS[id].name}」`, { relic: id });
     if (lines) lines.push(`奇物「${D.RELICS[id].name}」`);
     if (id === "hollowHeart") run.queue.push({ kind: "remove", count: 1, title: "空虚之心：选一张牌移除" });
     else if (id === "encyclopedia") for (let k = 1; k <= 3; k++) run.queue.push(cardStep(run, run.cfg.rarePct, `百科全书：第 ${k} 组卡牌奖励`, false));
@@ -320,7 +336,8 @@
     if (run.hp <= 0) { run.result = "lose"; run.queue = []; }
   }
 
-  function note(run, text) { (run.screen.notes = run.screen.notes || []).push(text); }
+  function say(run, text) { (run.screen.notes = run.screen.notes || []).push(text); }
+  function note(run, text) { say(run, text); track(run, "note", text); }
 
   /* ---------- 待处理的事（选牌、删牌、升级、选卡槽） ---------- */
   function autoSteps(run) {
@@ -353,13 +370,19 @@
     if (!s) return no("没有要处理的事");
     const p = payload || {};
     if (s.kind === "cards") {
-      if (p.skip) { run.queue.shift(); note(run, "跳过了这组卡牌奖励"); }
-      else {
+      /* 卡牌奖励单独记一条：给了哪几张、拿了哪张，汇总时算每张牌的选取率。 */
+      const offered = s.options.map(cardName);
+      if (p.skip) {
+        run.queue.shift();
+        say(run, "跳过了这组卡牌奖励");
+        track(run, "cards", `卡牌奖励（${offered.join("、")}）：跳过`, { offered, picked: null });
+      } else {
         const opt = s.options[p.index];
         if (!opt) return no("没有这个选项");
         const how = addCard(run, opt);
         run.queue.shift();
-        note(run, how === "replaced" ? "寒霜之触替换了卡组里的冰霜之触" : `「${cardName(opt)}」加入了卡组`);
+        say(run, how === "replaced" ? "寒霜之触替换了卡组里的冰霜之触" : `「${cardName(opt)}」加入了卡组`);
+        track(run, "cards", `卡牌奖励（${offered.join("、")}）：拿了「${cardName(opt)}」`, { offered, picked: cardName(opt) });
       }
     } else if (s.kind === "remove") {
       const card = run.deck[p.index];
@@ -425,6 +448,7 @@
     for (const fx of outcome.fx) applyFx(run, fx, lines);
     if (!outcome.fx.length) lines.push("无事发生");
     sc.lines = lines;
+    track(run, "event", `奇遇「${ev.name}」：选了「${opt.label}」`, { event: ev.id, choice: index, outcome: k, lines });
     autoSteps(run);
     return ok;
   }
@@ -546,7 +570,8 @@
     sc.opened = true;
     const lines = [];
     const id = randomRelic(run);
-    if (id) gainRelic(run, id, lines); else addGold(run, 3, lines);
+    if (id) gainRelic(run, id, lines); // 拿到奇物已经记过一条
+    else { addGold(run, 3, lines); track(run, "treasure", `宝箱：奇物拿光了，${lines.join("，")}`); }
     sc.lines = lines;
     autoSteps(run);
     return ok;

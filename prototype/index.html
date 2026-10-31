@@ -426,6 +426,99 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 .deck-view { width: min(940px, 100%); max-height: 88vh; overflow-y: auto; text-align: left; }
 .deck-view h2 { text-align: center; }
 
+/* ---------- 提示条（办好了） ---------- */
+.flash.ok { background: #1F3020; border-color: #6FAE72; color: #CFEACB; }
+
+/* ---------- 反馈问卷 ---------- */
+.survey { display: grid; gap: 16px; }
+.sv-item { display: grid; gap: 6px; justify-items: start; }
+.sv-q { font-weight: 700; }
+.survey input[type="text"], .survey textarea, .survey select, .paste textarea, .copy-text {
+  width: 100%; background: var(--wall); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; color: var(--light); font: inherit;
+}
+.survey input[type="text"], .survey select { max-width: 340px; }
+.survey textarea, .paste textarea { resize: vertical; }
+.sv-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.sv-opt { position: relative; }
+.sv-opt input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.sv-opt span { display: inline-block; min-width: 46px; text-align: center; border: 1px solid var(--line); background: var(--floor-deep); border-radius: 999px; padding: 4px 14px; }
+.sv-opt input:hover + span { border-color: var(--dim); }
+.sv-opt input:checked + span { background: var(--paint); border-color: var(--paint); color: var(--ink); font-weight: 700; }
+.sv-opt input:focus-visible + span { outline: 2px solid var(--paint); outline-offset: 2px; }
+.sv-opts.scale span { font-family: var(--font-num); font-size: 17px; line-height: 1.4; }
+.sv-ends { display: flex; justify-content: space-between; width: min(100%, 284px); font-size: 12px; color: var(--dim); }
+.survey-view, .rec-view, .copy-view { width: min(760px, 100%); max-height: 90vh; overflow-y: auto; text-align: left; }
+.survey-view h2, .rec-view h2, .copy-view h2 { text-align: center; font-size: 24px; }
+.copy-text { min-height: 40vh; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; }
+
+/* ---------- 对局记录 ---------- */
+.records { max-width: 980px; margin: 0 auto; padding: 18px 16px 64px; display: grid; gap: 16px; }
+.rec-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.rec-row {
+  --rc: var(--line); display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between;
+  background: var(--floor-deep); border: 1px solid var(--line); border-left: 4px solid var(--rc); border-radius: 8px; padding: 8px 12px;
+}
+.rec-row.result-win { --rc: var(--paint); }
+.rec-row.result-lose { --rc: var(--blood); }
+.rec-row.result-abandoned { --rc: #6B6963; }
+.rec-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; flex: 1 1 320px; }
+.rec-main .when { color: var(--dim); font-size: 13px; }
+.rec-sub { flex-basis: 100%; color: var(--dim); font-size: 13px; overflow-wrap: anywhere; }
+.sv-tag { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; color: var(--dim); }
+.sv-tag.done { border-color: #6FAE72; color: #9FD7A1; }
+.rec-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.file-btn { position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 0; }
+.file-btn:focus-within { outline: 2px solid var(--paint); outline-offset: 2px; }
+.paste { display: grid; gap: 8px; }
+.paste > summary { color: var(--dim); }
+
+/* 汇总：数字用卡片，数量用一种颜色的横向条形（颜色过了深色背景的对比度检查），选取率用表格。 */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.tile { background: var(--floor-deep); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 2px; align-content: start; }
+.tile .tl { font-size: 13px; color: var(--dim); }
+.tile .tv { font-family: var(--font-num); font-weight: 600; font-size: 30px; line-height: 1.15; }
+.tile .ts { font-size: 12px; color: var(--dim); }
+.sum-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px 28px; }
+.sum-part { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.sum-part h3 { font-size: 15px; }
+.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.bars li { display: grid; grid-template-columns: minmax(5em, 38%) minmax(48px, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; padding: 2px 4px; border-radius: 4px; }
+.bars li:hover { background: #FFFFFF0A; }
+.bars .bl { overflow-wrap: anywhere; }
+.bars .bt { position: relative; height: 12px; border-left: 1px solid #5A615C; }
+.bars .bt i { position: absolute; left: 0; top: 0; bottom: 0; background: #B48F35; border-radius: 0 4px 4px 0; }
+.bars .bv { color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.rate { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+table.rate th, table.rate td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; white-space: nowrap; }
+table.rate thead th { color: var(--dim); font-weight: 500; }
+table.rate tbody th { font-weight: 500; }
+table.rate td { font-variant-numeric: tabular-nums; }
+.meter { display: inline-block; vertical-align: middle; width: 72px; height: 8px; border-radius: 4px; background: #B48F3540; margin-right: 8px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: #B48F35; border-radius: 4px; }
+.sv-avg { color: var(--dim); font-size: 13px; }
+.sv-avg b { font-family: var(--font-num); font-weight: 600; font-size: 24px; color: var(--light); }
+.texts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.texts li { background: var(--floor-deep); border-left: 3px solid var(--line); border-radius: 4px; padding: 6px 10px; display: grid; gap: 2px; }
+.texts p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.texts .who { color: var(--dim); font-size: 12px; }
+
+/* 一份记录的详情 */
+.rec-view dl.stats { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px 14px; }
+.rec-view dl.stats dd { text-align: left; font-size: 18px; }
+.rec-view dl.answers { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.rec-view dl.answers dd { text-align: left; font-family: var(--font-body); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rec-view > p { overflow-wrap: anywhere; }
+.rv-part { display: grid; gap: 4px; }
+.sum-h { font-size: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; color: #CDD1C8; }
+.timeline li { padding-left: 1.2em; }
+.timeline li.enter { padding-left: 0; margin-top: 6px; color: var(--light); font-weight: 700; }
+.timeline li.enter:first-child { margin-top: 0; }
+.fights { display: grid; gap: 6px; }
+.fights summary { color: var(--light); font-size: 14px; }
+.flog { list-style: none; margin: 6px 0 0; padding: 6px 10px; max-height: 320px; overflow-y: auto; background: var(--wall); border-radius: 6px; font-size: 12.5px; color: #CDD1C8; display: grid; gap: 1px; }
+
 @media (max-width: 1000px) {
   .setup { grid-template-columns: minmax(0, 1fr); }
   .notice { position: static; }
@@ -440,7 +533,9 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
   .tabs .drawer-close { display: block; }
 }
 @media (max-width: 560px) {
-  .run-start, .run { padding: 12px 10px 48px; }
+  .run-start, .run, .records { padding: 12px 10px 48px; }
+  .modes button { padding: 4px 9px; }
+  .tile .tv { font-size: 24px; }
   .map-wrap { padding: 10px 6px 10px 30px; }
   .mnode { width: 40px; height: 40px; font-size: 12px; }
   .mnode.t-boss { width: 56px; height: 56px; }
@@ -478,6 +573,7 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
   <nav class="modes" aria-label="模式">
     <button type="button" data-mode="run" aria-pressed="false">完整一局</button>
     <button type="button" data-mode="sandbox" aria-pressed="false">战斗沙盒</button>
+    <button type="button" data-mode="records" aria-pressed="false">对局记录</button>
   </nav>
   <div class="top-info" id="top-info"></div>
   <div class="top-actions" id="top-actions"></div>
@@ -486,6 +582,8 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 <main id="setup" class="setup" hidden></main>
 
 <main id="run" class="run-main" hidden></main>
+
+<main id="records" class="records-main" hidden></main>
 
 <main id="combat" class="combat" hidden>
   <section class="board" id="board" aria-label="战场"></section>
@@ -513,8 +611,10 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 <script src="js/data.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/run.js"></script>
+<script src="js/record.js"></script>
 <script src="js/ui-common.js"></script>
 <script src="js/ui-combat.js"></script>
+<script src="js/ui-records.js"></script>
 <script src="js/ui-sandbox.js"></script>
 <script src="js/ui-run.js"></script>
 <script src="js/ui-app.js"></script>

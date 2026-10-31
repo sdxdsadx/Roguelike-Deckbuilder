@@ -4,7 +4,10 @@
   const QW = window.QW;
   const D = QW.data;
   const U = QW.ui;
+  const RC = QW.ui.records;
   const { $, esc, clamp, clone, TYPE_CLASS, CONFIG_RANGE } = U;
+  /* 这一场的记录信息：开打时生成，打完存进「对局记录」（同一场只占一份）。 */
+  const SB = { meta: null };
   const LANES = [0, 1, 2, 3, 4];
   const PARAM_LABEL = { dmg: "伤害", block: "护甲", cold: "寒冷", draw: "抽牌", reveal: "展示", lose: "失去生命", pawns: "影卒", energy: "费用" };
   const CONFIG_LABEL = [
@@ -222,6 +225,30 @@
     else { const el = $("#summary"); if (el) el.textContent = summaryText(); }
   }
 
+  /* ---------- 对局记录和问卷 ---------- */
+  function keepFight(c) {
+    if (!SB.meta || !c || !c.result) return null;
+    if (!SB.meta.endedAt) SB.meta.endedAt = new Date().toISOString();
+    const rec = QW.record.fromSandbox(c, SB.meta, set());
+    if (!RC.put(rec)) U.flash("浏览器里存不下这份记录了，请直接下载");
+    return rec;
+  }
+
+  function openSurvey(c) {
+    if (!c || !c.result || !SB.meta) return;
+    RC.openSurvey({
+      about: `战斗沙盒：${set().encName}，${c.result === "win" ? "胜利" : "失败"}，${c.turn} 回合`,
+      answers: RC.defaultAnswers(SB.meta.survey),
+      ctx: { cards: c.deckSpec.map(x => D.CARDS[x.id].name), enemies: c.encounterNames() },
+      onSubmit(survey, download) {
+        SB.meta.survey = survey;
+        const rec = keepFight(c);
+        if (!$("#overlay").hidden) QW.ui.combat.showResult();
+        if (download && rec) RC.download(rec); else U.flash("问卷已保存，和这一场的记录存在一起", "ok");
+      }
+    });
+  }
+
   const ctrl = {
     info: c => `<span>第 <b class="num">${c.turn}</b> 回合</span><span>${esc(set().encName)}</span><span>种子 <b class="num">${esc(c.seed)}</b></span>`,
     actions: () => [{ act: "restart-same", label: "同种子重开" }, { act: "restart-new", label: "换种子重开" }, { act: "to-setup", label: "改设置" }],
@@ -230,18 +257,26 @@
       if (a === "restart-same") startCombat(c ? c.seed : set().seed);
       else if (a === "restart-new") startCombat(U.randomSeed());
       else if (a === "to-setup") show();
+      else if (a === "survey") openSurvey(c);
+      else if (a === "record-dl") { const rec = keepFight(c); if (rec) RC.download(rec); }
     },
-    result: c => ({
-      cls: c.result === "win" ? "win" : "lose",
-      title: c.result === "win" ? "战斗胜利" : "你倒下了",
-      rows: QW.ui.combat.statRows(c),
-      buttons: [
-        { act: "restart-same", label: "同种子再打一次", main: true },
-        { act: "restart-new", label: "换个种子" },
-        { act: "to-setup", label: "改设置" },
-        { act: "close-result", label: "回去看战场" }
-      ]
-    }),
+    /* 打完弹结果的时候顺便把这一场存进「对局记录」。 */
+    result: c => {
+      keepFight(c);
+      return {
+        cls: c.result === "win" ? "win" : "lose",
+        title: c.result === "win" ? "战斗胜利" : "你倒下了",
+        rows: QW.ui.combat.statRows(c),
+        buttons: [
+          { act: "restart-same", label: "同种子再打一次", main: true },
+          { act: "restart-new", label: "换个种子" },
+          { act: "survey", label: SB.meta && SB.meta.survey ? "改反馈问卷" : "填反馈问卷" },
+          { act: "record-dl", label: "下载记录" },
+          { act: "to-setup", label: "改设置" },
+          { act: "close-result", label: "回去看战场" }
+        ]
+      };
+    },
     continueLabel: null,
     debug: []
   };
@@ -251,6 +286,7 @@
     if (seed != null) s.seed = String(seed);
     if (!s.deck.length || encEmpty(s.enc)) { show(); return; }
     U.saveSettings();
+    SB.meta = { id: `sandbox-${s.seed}-${Date.now().toString(36)}`, startedAt: new Date().toISOString(), encName: s.encName, survey: null };
     const c = new QW.Combat({
       seed: s.seed, encounter: clone(s.enc), deck: clone(s.deck), relics: clone(s.relics), waxSlot: s.waxSlot,
       config: clone(s.config), god: clone(s.god), overrides: clone(s.overrides)

@@ -50,7 +50,7 @@
       this.pending = null;
       this.larvaQueue = [];
       this.removedForever = [];
-      this.stats = { cardsPlayed: 0, damageDealt: 0, hpLost: 0, slotsLost: 0 };
+      this.stats = { cardsPlayed: 0, damageDealt: 0, hpLost: 0, slotsLost: 0, played: {} };
     }
 
     /* ---------- 记录 ---------- */
@@ -448,6 +448,7 @@
       if (d.persist) s.occ = { kind: "card", card: c, turnsLeft: d.persist };
       else s.played.push(c);
       this.stats.cardsPlayed++;
+      this.stats.played[this.cardName(c)] = (this.stats.played[this.cardName(c)] || 0) + 1;
       this.log(`打出「${this.cardName(c)}」（${cost} 费${usedFree ? "，时侠腕表免费" : ""}）→ 第 ${lane + 1} 槽`, "play");
       if (d.type === "攻击") this.flags.attackPlayed = true;
       if (d.faction === "幻术") this.flags.illusionPlayed = true;
@@ -1133,6 +1134,35 @@
       this.log("调试：修好所有卡槽", "god");
     }
     debugEnergy(n) { this.player.energy = n; this.log(`调试：费用设为 ${n}`, "god"); }
+
+    /* ---------- 记录 ----------
+       这一场战斗的摘要，可以直接写进对局记录的 JSON：敌人、结果、回合、掉血、出牌次数，以及完整日志。 */
+    encounterNames() {
+      if (this.boss) return [this.boss.name];
+      if (this.mirror) return [this.mirror.name];
+      const enc = this.encounter;
+      return enc.kind === "lanes" ? enc.lanes.filter(Boolean).map(id => D.ENEMIES[id].name) : [];
+    }
+
+    summary() {
+      return {
+        seed: String(this.seed),
+        enemies: this.encounterNames(),
+        result: this.result || "unfinished",
+        turns: this.turn,
+        hpBefore: Math.min(this.cfg.startHp, this.cfg.playerHp),
+        hpAfter: this.player.hp,
+        maxHp: this.player.maxHp,
+        hpLost: this.stats.hpLost,
+        slotsLost: this.stats.slotsLost,
+        cardsPlayed: this.stats.cardsPlayed,
+        damageDealt: this.stats.damageDealt,
+        played: Object.assign({}, this.stats.played),
+        deck: this.deckSpec.map(x => D.CARDS[x.id].name + (x.up ? "+" : "")),
+        cursesRemoved: this.removedForever.length,
+        log: this.logs.map(l => (l.kind === "phase" ? `—— ${l.text} ——` : l.text))
+      };
+    }
   }
 
   QW.Combat = Combat;

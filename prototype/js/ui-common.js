@@ -28,7 +28,7 @@
       deck: clone(D.STARTER_DECK), relics: {}, waxSlot: 2,
       config: clone(D.CONFIG), god: { lockHp: false, infiniteEnergy: false },
       overrides: { enemies: {}, cards: {} }, seed: randomSeed(),
-      run: clone(D.RUN), runV: 2, runSeed: randomSeed()
+      run: clone(D.RUN), runV: 2, runSeed: randomSeed(), tester: ""
     };
   }
 
@@ -69,7 +69,8 @@
       const raw = JSON.parse(localStorage.getItem(STORE) || "null");
       const s = raw && raw.v === 1 ? raw.set : null;
       if (!s) return d;
-      if (s.mode === "run" || s.mode === "sandbox") d.mode = s.mode;
+      if (s.mode === "run" || s.mode === "sandbox" || s.mode === "records") d.mode = s.mode;
+      if (typeof s.tester === "string") d.tester = s.tester.slice(0, 40);
       if (Array.isArray(s.deck)) d.deck = s.deck.filter(x => x && D.CARDS[x.id]).map(x => ({ id: x.id, up: !!x.up })).slice(0, 80);
       if (validEnc(s.enc)) { d.enc = s.enc; d.encName = String(s.encName || "自定义").slice(0, 30); }
       if (s.relics) for (const k of Object.keys(D.RELICS)) if (s.relics[k] && D.RELICS[k].combat) d.relics[k] = true;
@@ -109,16 +110,50 @@
     topHandler = handler || null;
   }
 
-  /* ---------- 提示条 ---------- */
+  /* ---------- 提示条 ----------
+     默认是「做不了」的红色提示；kind 为 "ok" 时是「已经办好了」的绿色提示。 */
   let flashTimer = null;
-  function flash(text) {
+  function flash(text, kind) {
     const el = $("#flash");
     el.textContent = text;
+    el.className = "flash" + (kind ? " " + kind : "");
     el.hidden = false;
     clearTimeout(flashTimer);
-    flashTimer = setTimeout(() => { el.hidden = true; }, 2400);
+    flashTimer = setTimeout(() => { el.hidden = true; }, kind === "ok" ? 3200 : 2400);
   }
   function hideFlash() { $("#flash").hidden = true; }
+
+  /* ---------- 弹窗 ----------
+     keep：里面有没提交的表单，点背景或按 Esc 不关，只能点里面的按钮关。 */
+  let modalBack = null;
+  function openModal(html, keep) {
+    const m = $("#modal");
+    if (m.hidden) modalBack = document.activeElement;
+    m.innerHTML = html;
+    m.dataset.keep = keep ? "1" : "";
+    m.hidden = false;
+    m.scrollTop = 0;
+    const box = m.querySelector("[data-focus]") || m.querySelector('[role="dialog"]');
+    if (box) {
+      if (!box.hasAttribute("tabindex") && box.getAttribute("role") === "dialog") box.setAttribute("tabindex", "-1");
+      box.focus({ preventScroll: true });
+    }
+  }
+  function closeModal() {
+    const m = $("#modal");
+    if (m.hidden) return;
+    m.hidden = true;
+    m.innerHTML = "";
+    if (modalBack && document.contains(modalBack) && typeof modalBack.focus === "function") modalBack.focus({ preventScroll: true });
+    modalBack = null;
+  }
+  $("#modal").addEventListener("click", ev => {
+    const m = ev.currentTarget;
+    if ((ev.target === m && m.dataset.keep !== "1") || ev.target.closest("[data-close-modal]")) closeModal();
+  });
+  document.addEventListener("keydown", ev => {
+    if (ev.key === "Escape" && !$("#modal").hidden && $("#modal").dataset.keep !== "1") closeModal();
+  });
 
   /* ---------- 说明浮窗 ---------- */
   function showTip(html, el) {
@@ -174,7 +209,7 @@
 
   QW.ui = {
     $, esc, clamp, clone, reduceMotion, TYPE_CLASS, CONFIG_RANGE, RUN_RANGE, S,
-    randomSeed, defaults, validEnc, loadSettings, saveSettings, setTop, flash, hideFlash, showTip, hideTip,
+    randomSeed, defaults, validEnc, loadSettings, saveSettings, setTop, flash, hideFlash, openModal, closeModal, showTip, hideTip,
     cardParams, cardCost, cardLabel, cardText, ticket
   };
 })();

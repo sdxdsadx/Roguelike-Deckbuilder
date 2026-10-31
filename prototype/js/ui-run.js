@@ -6,6 +6,7 @@
   const D = QW.data;
   const U = QW.ui;
   const R = QW.run;
+  const RC = QW.ui.records;
   const { $, esc, clamp, clone, RUN_RANGE } = U;
   const RUN_STORE = "slot-roguelike-run-v1";
   const TYPE_NAME = D.NODE_TYPES;
@@ -24,9 +25,49 @@
   function loadRun() {
     try {
       const r = JSON.parse(localStorage.getItem(RUN_STORE) || "null");
-      if (r && r.v === 2 && r.map && Array.isArray(r.map.rows) && r.screen && Array.isArray(r.deck) && r.deck.every(x => x && D.CARDS[x.id])) return r;
+      if (r && r.v === 2 && r.map && Array.isArray(r.map.rows) && r.screen && Array.isArray(r.deck) && r.deck.every(x => x && D.CARDS[x.id])) {
+        // 加对局记录之前存下的进度：从现在开始记
+        if (!r.record || !Array.isArray(r.record.timeline) || !Array.isArray(r.record.fights)) {
+          r.record = { id: `run-${r.seed}-${Date.now().toString(36)}`, startedAt: null, timeline: [], fights: [] };
+        }
+        if (r.survey === undefined) r.survey = null;
+        return r;
+      }
     } catch (e) { /* 存档坏了就当没有 */ }
     return null;
+  }
+
+  /* ---------- 对局记录 ----------
+     一局结束（或者中途放弃）就存一份到「对局记录」里；之后填问卷、再结束都只更新这一份。 */
+  function keepRecord(run) {
+    if (!run || !run.record || !run.visited.length) return null;
+    const rec = QW.record.fromRun(run, U.S.set);
+    if (!RC.put(rec)) U.flash("浏览器里存不下这份记录了，请直接下载");
+    return rec;
+  }
+
+  function abandonRecord(run) {
+    if (!run || run.result || !run.record || !run.visited.length) return null;
+    run.record.abandoned = true;
+    run.record.endedAt = new Date().toISOString();
+    return keepRecord(run);
+  }
+
+  function surveyContext(run) {
+    const enemies = [].concat(...(run.record ? run.record.fights : []).map(f => f.enemies || []));
+    return { cards: run.deck.map(c => D.CARDS[c.id].name), enemies };
+  }
+
+  function submitSurvey(download) {
+    const run = RS.run;
+    const answers = RC.readSurvey($("#run-survey"));
+    if (!RC.answered(answers)) { U.flash("问卷还是空的，至少答一题"); return; }
+    RC.rememberTester(answers.tester);
+    run.survey = QW.record.makeSurvey(answers);
+    const rec = keepRecord(run);
+    saveRun();
+    renderPlay();
+    if (download && rec) RC.download(rec); else U.flash("问卷已保存，和这一局的记录存在一起", "ok");
   }
 
   function floorText(run) {
@@ -47,6 +88,7 @@
   function route() {
     const run = RS.run;
     run.lockHp = !!U.S.set.god.lockHp;
+    if (run.result) keepRecord(run);
     saveRun();
     if (run.screen.kind === "combat") startFight();
     else renderPlay();
@@ -56,6 +98,7 @@
     const s = U.S.set;
     s.runSeed = String(seed);
     U.saveSettings();
+    abandonRecord(RS.run);  // 覆盖掉没打完的上一局：记成放弃
     RS.run = R.createRun({ seed: s.runSeed, run: s.run, config: s.config });
     RS.confirmNew = false;
     window.scrollTo(0, 0);
@@ -80,6 +123,7 @@
     U.setTop("<span>从第一层走到血色魅影</span>", [], null);
     const s = U.S.set;
     const saved = RS.run && !RS.run.result ? RS.run : null;
+    const last = RS.run && RS.run.result ? RS.run : null;
     const fields = RUN_FIELDS.map(([k, label]) =>
       `<label class="field" for="run-${k}">${label}<input id="run-${k}" type="number" inputmode="numeric" data-rset="${k}" min="${RUN_RANGE[k][0]}" max="${RUN_RANGE[k][1]}" value="${s.run[k]}"></label>`).join("");
     const weights = WEIGHT_FIELDS.map(([k, label]) =>
@@ -88,6 +132,7 @@
       + '<section class="box" aria-labelledby="h-run"><h2 id="h-run">第一区域</h2>'
       + "<p>一共 12 层。第 1 层打小怪，第 6 层固定是宝箱，第 11 层是阳台，第 12 层打血色魅影；其余每层有 3 个选项，任选一个往上走。整张地图开局就能看到，血量、卡组、金币和奇物一路带着走。</p>"
       + (saved ? `<div class="resume"><p>上一局停在第 ${saved.floor} 层，生命 ${saved.hp}/${saved.maxHp}，金币 ${saved.gold}。</p><button type="button" class="btn-main" data-ract="resume">继续上一局</button></div>` : "")
+      + (last ? `<p class="note">上一局（种子 ${esc(last.seed)}，${last.result === "win" ? "通关" : "失败"}）的记录在「对局记录」里，可以在那里补填问卷、下载。</p>` : "")
       + `<div class="seed-row"><label class="field" for="run-seed">随机种子<input id="run-seed" type="text" maxlength="24" data-rset="runSeed" value="${esc(s.runSeed)}"></label><button type="button" class="btn" data-ract="seed-new">换一个</button></div>`
       + `<div class="actions-row"><button type="button" class="${saved ? "btn" : "btn-main"}" data-ract="new">${saved && RS.confirmNew ? "会覆盖上一局，再点一次确认" : "开始新的一局"}</button></div>`
       + "</section>"
@@ -267,7 +312,22 @@
       + `<p><b>奇物</b>：${esc(relicText || "无")}</p>`
       + '<div class="actions-row"><button type="button" class="btn-main" data-ract="again-new">再来一局</button>'
       + '<button type="button" class="btn" data-ract="again-same">同一个种子再来一局</button>'
-      + '<button type="button" class="btn" data-ract="to-start">改开局设置</button></div></section>';
+      + '<button type="button" class="btn" data-ract="to-start">改开局设置</button></div></section>'
+      + surveyBox(run);
+  }
+
+  /* 局末的反馈问卷：和这一局的记录存在一起，提交时顺便下载记录文件，发给策划。 */
+  function surveyBox(run) {
+    const done = run.survey;
+    const when = done ? new Date(done.at) : null;
+    const at = when && !isNaN(when.getTime()) ? `${when.getHours()}:${String(when.getMinutes()).padStart(2, "0")}` : "";
+    return '<section class="box survey-box" aria-labelledby="h-survey"><div class="box-head"><h2 id="h-survey">反馈问卷</h2>'
+      + `<span class="hint">${done ? `${at} 提交过了，改完可以再提交一次` : "都是选填，填多少算多少"}</span></div>`
+      + `<div class="survey" id="run-survey">${RC.surveyFields(RC.defaultAnswers(done), surveyContext(run), "rs")}</div>`
+      + `<div class="actions-row"><button type="button" class="btn-main" data-ract="survey-dl">${done ? "更新问卷并下载记录" : "提交问卷并下载记录"}</button>`
+      + `<button type="button" class="btn" data-ract="survey-save">${done ? "只更新问卷" : "只提交问卷"}</button>`
+      + '<button type="button" class="btn" data-ract="record-dl">只下载记录</button></div>'
+      + '<p class="note">记录是一个 JSON 文件，里面有这一局的路线、每一步的选择、每场战斗的日志和问卷的答案，直接发给策划就行。所有记录都能在顶上的「对局记录」里找到。</p></section>';
   }
 
   function topInfo(run) {
@@ -279,9 +339,11 @@
     else if (a === "abandon") {
       if (!RS.confirmAbandon) { armConfirm("confirmAbandon"); renderPlay(); return; }
       RS.confirmAbandon = false;
+      const kept = abandonRecord(RS.run);
       clearRun();
       RS.run = null;
       renderStart();
+      if (kept) U.flash("这一局记成了「放弃」，记录在「对局记录」里，可以在那里填问卷", "ok");
     }
   }
 
@@ -310,11 +372,9 @@
     if (!run) return;
     const order = { "攻击": 0, "防御": 1, "技能": 2, "能力": 3, "状态": 4, "诅咒": 5 };
     const cards = run.deck.slice().sort((a, b) => order[D.CARDS[a.id].type] - order[D.CARDS[b.id].type] || D.CARDS[a.id].name.localeCompare(D.CARDS[b.id].name, "zh"));
-    $("#modal").innerHTML = `<div class="result deck-view" role="dialog" aria-modal="true" aria-labelledby="deck-title"><h2 id="deck-title">卡组 ${run.deck.length} 张</h2>`
+    U.openModal(`<div class="result deck-view" role="dialog" aria-modal="true" aria-labelledby="deck-title"><h2 id="deck-title">卡组 ${run.deck.length} 张</h2>`
       + `<div class="deck-grid">${cards.map(c => U.ticket(c, { tag: "div", cls: ["small"] })).join("")}</div>`
-      + '<div class="actions"><button type="button" class="btn-main" data-ract="close-modal">关闭</button></div></div>';
-    $("#modal").hidden = false;
-    $("#modal .btn-main").focus();
+      + '<div class="actions"><button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>');
   }
 
   function showRelicTip(el) {
@@ -383,6 +443,9 @@
       case "again-same": newRun(run.seed); return;
       case "to-start": renderStart(); return;
       case "deck": showDeck(); return;
+      case "survey-dl": submitSurvey(true); return;
+      case "survey-save": submitSurvey(false); return;
+      case "record-dl": { const rec = keepRecord(run); if (rec) RC.download(rec); return; }
       case "choose": r = R.chooseEvent(run, i); break;
       case "pick": r = R.resolveStep(run, { index: i }); break;
       case "skip": r = R.resolveStep(run, { skip: true }); break;
@@ -418,10 +481,6 @@
 
   $("#run").addEventListener("click", onClick);
   $("#run").addEventListener("change", onChange);
-  $("#modal").addEventListener("click", ev => {
-    if (ev.target === ev.currentTarget || ev.target.closest('[data-ract="close-modal"]')) $("#modal").hidden = true;
-  });
-  document.addEventListener("keydown", ev => { if (ev.key === "Escape") $("#modal").hidden = true; });
 
   QW.ui.run = { show, renderStart };
 })();

@@ -345,9 +345,24 @@
     }
   ];
 
+  /* 一局（或沙盒里一场战斗）结束后的反馈问卷。想加题、改题直接改这里：
+     short 一行字，scale 1–5 打分（low/high 是两头的说明），choice 单选，card 选一张牌，enemy 选一个敌人，text 多行字。 */
+  const SURVEY = [
+    { id: "tester", type: "short", q: "怎么称呼你（可选，方便策划区分是谁的反馈）" },
+    { id: "fun", type: "scale", q: "好玩吗？", low: "很无聊", high: "很好玩" },
+    { id: "difficulty", type: "scale", q: "难度怎么样？", low: "太简单", high: "太难" },
+    { id: "pace", type: "choice", q: "节奏怎么样？", options: ["太慢", "刚好", "太快"] },
+    { id: "bestCard", type: "card", q: "最好用的一张牌" },
+    { id: "worstCard", type: "card", q: "最没用的一张牌" },
+    { id: "hardestEnemy", type: "enemy", q: "最难对付的敌人" },
+    { id: "rules", type: "text", q: "哪条规则看不懂，或者觉得别扭？" },
+    { id: "bugs", type: "text", q: "遇到的 bug、卡住的地方，或者数值明显不对的地方" },
+    { id: "other", type: "text", q: "还有什么想说的" }
+  ];
+
   QW.data = {
     CONFIG, BROKEN_SLOT_RULES, SHADOW_SLOT_HP, PAWN, FACTIONS, CARDS, ENEMIES, RELICS,
     STARTER_DECK, SUMMON_POOL, WEAK, STRONG, PRESETS, randomEncounter,
-    NODE_TYPES, RUN, RELIC_POOL, EVENTS
+    NODE_TYPES, RUN, RELIC_POOL, EVENTS, SURVEY
   };
 })(typeof window !== "undefined" ? window : globalThis);

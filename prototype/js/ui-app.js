@@ -1,4 +1,4 @@
-/* 入口：读设置，切换「完整一局」和「战斗沙盒」两种模式。 */
+/* 入口：读设置，切换「完整一局」「战斗沙盒」「对局记录」三种模式。 */
 (function () {
   "use strict";
   const QW = window.QW;
@@ -8,8 +8,11 @@
   function setMode(mode) {
     U.S.set.mode = mode;
     U.saveSettings();
+    U.closeModal();
     document.querySelectorAll("[data-mode]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
-    if (mode === "run") QW.ui.run.show(); else QW.ui.sandbox.show();
+    if (mode === "run") QW.ui.run.show();
+    else if (mode === "records") QW.ui.records.show();
+    else QW.ui.sandbox.show();
     window.scrollTo(0, 0);
   }
 
