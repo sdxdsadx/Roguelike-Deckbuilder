@@ -69,6 +69,28 @@ test("单体牌只打正对面；正对面没有敌人时放不进去", () => {
   assert.equal(c.enemyAt(1).hp, 4);
 });
 
+test("被打爆的卡槽能放什么牌，按设置的规则来", () => {
+  const rules = { special: [false, false, true], noDefense: [true, false, true], all: [true, true, true] };
+  for (const [rule, [strikeOk, parryOk, hammerOk]] of Object.entries(rules)) {
+    const c = fight(lanes("slime"), { config: { brokenSlotCards: rule }, god: { infiniteEnergy: true } });
+    c.destroySlot(c.slots[0]);
+    assert.equal(c.canPlay(give(c, "strike").uid, 0).ok, strikeOk, `${rule}：打击`);
+    assert.equal(c.canPlay(give(c, "parry").uid, 0).ok, parryOk, `${rule}：招架`);
+    assert.equal(c.canPlay(give(c, "goldHammer").uid, 0).ok, hammerOk, `${rule}：黄金锤`);
+  }
+});
+
+test("默认规则下，被打爆那一列的敌人还能用单体牌打到，睡着的怠惰幼兽能被打醒", () => {
+  const c = fight(lanes(null, null, "sloth"), { god: { lockHp: true } });
+  c.slots[2].hp = 1;
+  c.endTurn();
+  c.hand = [];
+  const e = c.enemies[0];
+  assert.equal(e.asleep, true);
+  playOk(c, give(c, "strike"), 2);
+  assert.equal(e.asleep, false);
+});
+
 test("一个卡槽一回合只能放 1 张牌", () => {
   const c = fight(lanes("slime"));
   playOk(c, give(c, "parry"), 2);

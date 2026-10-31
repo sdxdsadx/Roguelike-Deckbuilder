@@ -44,8 +44,9 @@
       this.factions = new Set();
       this.watchCount = 0;
       this.freeNext = false;
-      this.netsukeUsed = false;
-      this.ring = this.relics.ring ? D.RELICS.ring.armor : 0;
+      // 完整一局里，老旧的根付失效、逐梦者之戒剩多少护甲，都会带到下一场
+      this.netsukeUsed = !!opts.netsukeUsed;
+      this.ring = this.relics.ring ? (opts.ringArmor != null ? opts.ringArmor : D.RELICS.ring.armor) : 0;
       this.pending = null;
       this.larvaQueue = [];
       this.removedForever = [];
@@ -381,16 +382,24 @@
     }
 
     slotReason(s) {
-      if (s.destroyed) return "这个卡槽被打爆了";
+      if (s.destroyed) return s.played ? "这个卡槽本回合已经放过牌" : "这个卡槽被打爆了，这张牌放不进去";
       if (s.played) return "这个卡槽本回合已经放过牌";
       if (s.occ) return `这个卡槽被${this.occName(s.occ)}占着`;
       return "";
     }
 
+    /* 普通的牌能不能放进被打爆的卡槽，看 cfg.brokenSlotCards（待确认，见 data.js）。 */
+    brokenSlotAllows(c) {
+      const rule = this.cfg.brokenSlotCards;
+      if (rule === "all") return true;
+      if (rule === "noDefense") { const t = this.def(c).type; return t === "攻击" || t === "技能"; }
+      return false;
+    }
+
     laneCheck(c, lane) {
       const s = this.slots[lane];
-      const intactFree = !s.destroyed && !s.played && !s.occ;
-      const brokenFree = s.destroyed && !s.played;
+      const brokenFree = s.destroyed && !s.played && !s.occ;
+      const intactFree = (!s.destroyed && !s.played && !s.occ) || (brokenFree && this.brokenSlotAllows(c));
       const tt = this.targetType(c);
       if (tt === "slot") return intactFree ? ok : no(this.slotReason(s));
       if (tt === "opposite") {
@@ -987,7 +996,7 @@
       const s = this.slots[lane];
       const head = `${src} 攻击第 ${lane + 1} 槽 ${amount}${detail ? `（${detail}）` : ""}`;
       if (amount <= 0) { this.log(`${head}：没有伤害`, "hurt"); return false; }
-      if (!s.destroyed && s.alibi) {
+      if (s.alibi) {
         s.alibi = false;
         this.log(`${head}：不在场证明抵消了这次伤害`, "hurt");
         return false;

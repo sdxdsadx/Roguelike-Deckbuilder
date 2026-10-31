@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>卡牌肉鸽战斗沙盒</title>
+<title>卡牌肉鸽试玩原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;900&display=swap">
@@ -334,6 +334,98 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 .shake { animation: shake .35s; }
 @keyframes shake { 0%, 100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 
+
+/* ---------- 模式切换 ---------- */
+.modes { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.modes button { border: 0; background: transparent; padding: 4px 12px; font-size: 14px; color: var(--dim); }
+.modes button[aria-pressed="true"] { background: var(--paint); color: var(--ink); font-weight: 700; }
+
+/* ---------- 完整一局 ---------- */
+.run-start, .run { max-width: 980px; margin: 0 auto; padding: 18px 16px 64px; display: grid; gap: 16px; }
+.run-start p { max-width: 40em; }
+.resume { display: grid; gap: 8px; justify-items: start; background: var(--floor-deep); border: 1px solid var(--paint); border-radius: 8px; padding: 12px; }
+.actions-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.sub { font-size: 15px; color: var(--dim); font-weight: 500; }
+.run-hud {
+  position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
+}
+.stat.gold .n { color: var(--paint); }
+.relic-row { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.rbtn { font-size: 13px; border: 1px solid var(--line); background: var(--floor-deep); border-radius: 999px; padding: 2px 10px; }
+.rbtn:hover { border-color: var(--dim); }
+
+.map-screen { display: grid; gap: 10px; }
+.map-wrap { background: var(--noise), radial-gradient(ellipse at 50% 0%, #4A504A 0%, var(--floor) 45%, var(--floor-deep) 100%); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 12px 40px; }
+.map { position: relative; max-width: 560px; margin: 0 auto; }
+.map-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.map-lines line { stroke: #D9B44A50; stroke-width: 2; stroke-dasharray: 4 6; vector-effect: non-scaling-stroke; }
+.map-lines line.open { stroke: #D9B44AB0; }
+.map-lines line.walked { stroke: var(--paint); stroke-dasharray: none; stroke-width: 3; }
+.mnode {
+  --nc: #8A918B; position: absolute; transform: translate(-50%, -50%); width: 46px; height: 46px; border-radius: 50%;
+  border: 2px solid var(--nc); background: var(--wall); color: var(--light); font-size: 13px; font-weight: 700;
+  padding: 0; display: grid; place-items: center; opacity: .45;
+}
+.mnode:disabled { cursor: default; }
+.mnode.avail { opacity: 1; box-shadow: 0 0 0 3px var(--paint), 0 0 18px #D9B44A66; }
+.mnode.visited { opacity: 1; background: var(--nc); color: var(--ink); }
+.mnode.here { box-shadow: 0 0 0 3px var(--light); }
+.t-battle { --nc: #8A918B; }
+.t-elite { --nc: #D0493E; }
+.t-event { --nc: #A88AD6; }
+.t-rest { --nc: #6FAE72; }
+.t-treasure { --nc: #D9B44A; }
+.t-shop { --nc: #9AB8D6; }
+.t-boss { --nc: #E4776C; }
+.mnode.t-boss { width: 66px; height: 66px; font-size: 15px; }
+.floor-no { position: absolute; left: -30px; transform: translateY(-50%); font-family: var(--font-num); font-size: 15px; color: var(--dim); }
+.floor-no.next { color: var(--paint); font-weight: 700; }
+.floor-band { position: absolute; left: -36px; right: -8px; height: 56px; transform: translateY(-50%); background: #D9B44A14; border-top: 1px dashed #D9B44A55; border-bottom: 1px dashed #D9B44A55; pointer-events: none; }
+.map { max-width: 460px; }
+.map-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; color: var(--dim); }
+.map-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.map-legend .lg::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--nc); }
+.run-debug summary { color: var(--dim); }
+.run-debug .row-f { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.run-debug .btn[aria-pressed="true"] { border-color: var(--paint); color: var(--paint); }
+
+.event-text { font-family: var(--font-title); font-size: 16px; line-height: 1.9; max-width: 38em; display: grid; gap: 8px; font-weight: 600; }
+.choices { display: grid; gap: 10px; }
+.choice { text-align: left; display: grid; gap: 2px; background: var(--floor-deep); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+.choice:hover { border-color: var(--paint); }
+.choice b { font-family: var(--font-title); font-weight: 900; font-size: 16px; }
+.choice span { color: var(--dim); font-size: 14px; }
+.outcome { display: grid; gap: 6px; }
+.chosen { font-weight: 700; }
+.record { color: var(--dim); font-size: 13px; border-left: 3px solid var(--line); padding-left: 10px; max-width: 40em; }
+.notes { margin: 0; padding-left: 1.3em; display: grid; gap: 2px; color: #D6DAD1; }
+.step { display: grid; gap: 10px; border-top: 1px dashed var(--line); padding-top: 12px; }
+.step h3 { font-size: 16px; color: var(--paint); }
+.pick-row, .shop-row { min-height: 0; padding-top: 18px; }
+.deck-grid { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 16px; }
+.card.small { width: 122px; min-height: 152px; }
+.card.sold { opacity: .45; }
+.card:disabled { cursor: default; }
+.card .price { align-self: flex-start; font-family: var(--font-num); font-weight: 700; font-size: 15px; background: var(--paint); color: var(--ink); border-radius: 4px; padding: 0 6px; }
+.card .price.poor { background: #E3A59D; }
+.relic-shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.relic-item { text-align: left; display: grid; gap: 4px; background: var(--floor-deep); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.relic-item:hover:not(:disabled) { border-color: var(--paint); }
+.relic-item:disabled { opacity: .45; cursor: default; }
+.relic-item b { font-family: var(--font-title); font-weight: 900; }
+.relic-item span { font-size: 13px; color: var(--dim); }
+.relic-item .price { font-family: var(--font-num); font-size: 16px; color: var(--paint); }
+.slot-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.end.win h2 { color: var(--paint); }
+.end.lose h2 { color: #F08A80; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px 16px; margin: 0; }
+.stats > div { display: grid; gap: 2px; }
+.stats dt { color: var(--dim); font-size: 13px; }
+.stats dd { margin: 0; font-family: var(--font-num); font-size: 19px; }
+.deck-view { width: min(940px, 100%); max-height: 88vh; overflow-y: auto; text-align: left; }
+.deck-view h2 { text-align: center; }
+
 @media (max-width: 1000px) {
   .setup { grid-template-columns: minmax(0, 1fr); }
   .notice { position: static; }
@@ -348,6 +440,12 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
   .tabs .drawer-close { display: block; }
 }
 @media (max-width: 560px) {
+  .run-start, .run { padding: 12px 10px 48px; }
+  .map-wrap { padding: 10px 6px 10px 30px; }
+  .mnode { width: 40px; height: 40px; font-size: 12px; }
+  .mnode.t-boss { width: 56px; height: 56px; }
+  .floor-no { left: -24px; font-size: 13px; }
+  .relic-row { margin-left: 0; }
   body { font-size: 14px; }
   .top { padding: 8px 10px; }
   .stalls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -376,12 +474,18 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 </head>
 <body>
 <header class="top">
-  <h1 class="brand">战斗沙盒</h1>
+  <h1 class="brand">卡牌肉鸽原型</h1>
+  <nav class="modes" aria-label="模式">
+    <button type="button" data-mode="run" aria-pressed="false">完整一局</button>
+    <button type="button" data-mode="sandbox" aria-pressed="false">战斗沙盒</button>
+  </nav>
   <div class="top-info" id="top-info"></div>
   <div class="top-actions" id="top-actions"></div>
 </header>
 
-<main id="setup" class="setup"></main>
+<main id="setup" class="setup" hidden></main>
+
+<main id="run" class="run-main" hidden></main>
 
 <main id="combat" class="combat" hidden>
   <section class="board" id="board" aria-label="战场"></section>
@@ -392,6 +496,7 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
       <button type="button" role="tab" id="tab-log" data-tab="log" aria-selected="true">战斗日志</button>
       <button type="button" role="tab" id="tab-piles" data-tab="piles" aria-selected="false">牌堆</button>
       <button type="button" role="tab" id="tab-debug" data-tab="debug" aria-selected="false">调试</button>
+      <button type="button" class="drawer-close" data-act="drawer">关闭</button>
     </div>
     <div class="tabpanel" id="panel-log" role="tabpanel" aria-labelledby="tab-log"><ol class="log" id="log"></ol></div>
     <div class="tabpanel" id="panel-piles" role="tabpanel" aria-labelledby="tab-piles" hidden></div>
@@ -400,11 +505,18 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 </main>
 
 <div class="overlay" id="overlay" hidden></div>
+<div class="overlay" id="modal" hidden></div>
 <div class="tip" id="tip" role="tooltip" hidden></div>
+<div class="flash" id="flash" role="status" hidden></div>
 
 <script src="js/rng.js"></script>
 <script src="js/data.js"></script>
 <script src="js/engine.js"></script>
-<script src="js/ui.js"></script>
+<script src="js/run.js"></script>
+<script src="js/ui-common.js"></script>
+<script src="js/ui-combat.js"></script>
+<script src="js/ui-sandbox.js"></script>
+<script src="js/ui-run.js"></script>
+<script src="js/ui-app.js"></script>
 </body>
 </html>

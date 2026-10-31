@@ -11,7 +11,19 @@
     energy: 3,         // 每回合费用
     draw: 5,           // 每回合抽牌
     handLimit: 10,     // 手牌上限（待确认）
-    enemyStrength: 0   // 敌人开局力量（事件「无助的男孩」会让它变成 1）
+    enemyStrength: 0,  // 敌人开局力量（事件「无助的男孩」会让它变成 1）
+    // 被打爆的卡槽能放哪些牌（待确认）：
+    //   special   只能放即冻术、诡药、冷场、黄金锤
+    //   noDefense 攻击牌和技能牌也能放，防御牌和能力牌不行
+    //   all       什么牌都能放
+    // 只能放 special 时，正对被打爆卡槽的敌人只有全体伤害打得到，初始卡组可能卡死，所以先用 noDefense。
+    brokenSlotCards: "noDefense"
+  };
+
+  const BROKEN_SLOT_RULES = {
+    special: "只能放即冻术、诡药、冷场、黄金锤",
+    noDefense: "攻击牌和技能牌也能放，防御牌和能力牌不行",
+    all: "什么牌都能放"
   };
 
   const SHADOW_SLOT_HP = 4;
@@ -248,20 +260,94 @@
     { name: "Boss：血色魅影", enc: { kind: "phantom" } }
   ];
 
-  /* 随机普通战斗：2–3 个弱怪，或 1 个强怪带 1 个弱怪。 */
-  function randomEncounter(seed) {
+  /* 随机普通战斗：2–3 个弱怪，或 1 个强怪带 1 个弱怪。easy 时只出 2 个弱怪（一局里的第一场）。 */
+  function randomEncounter(seed, easy) {
     const rng = QW.rng.create(seed + ":encounter");
-    const ids = rng.next() < 0.5
-      ? Array.from({ length: rng.int(2, 3) }, () => rng.pick(WEAK))
-      : [rng.pick(STRONG), rng.pick(WEAK)];
+    const ids = easy
+      ? [rng.pick(WEAK), rng.pick(WEAK)]
+      : rng.next() < 0.5
+        ? Array.from({ length: rng.int(2, 3) }, () => rng.pick(WEAK))
+        : [rng.pick(STRONG), rng.pick(WEAK)];
     const lanes = [null, null, null, null, null];
     const spots = rng.shuffle([0, 1, 2, 3, 4]);
     ids.forEach((id, k) => { lanes[spots[k]] = id; });
     return { kind: "lanes", lanes };
   }
 
+  /* ---------- 完整一局 ---------- */
+  const NODE_TYPES = {
+    battle: "战斗", elite: "挑战", event: "奇遇", rest: "阳台", treasure: "宝箱", shop: "商店", boss: "Boss"
+  };
+
+  // 地图：一共 12 层，第 1 层固定打小怪，第 11 层阳台，第 12 层 Boss，中间固定一层奖励（宝箱）；
+  // 其余每层 3 个选项任选一个。没定的数都放在这里，开局页可以改（待确认）
+  const RUN = {
+    floors: 12,                                                  // 一共几层（含 Boss）
+    rewardFloor: 6,                                              // 固定出奖励（宝箱）的那一层
+    weights: { event: 25, elite: 12, rest: 10, shop: 8 },        // 随机层除了 1 个战斗，另外 2 个选项的比例
+    startGold: 3, goldBattle: 1, goldElite: 5, goldBoss: 0,      // 问卷 B6-05
+    restHeal: 9,                                                 // 阳台回血量，问卷里还没定
+    rarePct: 8, eliteRarePct: 20,                                // 卡牌奖励里出现梦想卡的概率（%）
+    shopCards: 5, shopRelics: 3, cardPrice: 2                    // 卡牌 2 金币一张（问卷 B6-06）
+  };
+
+  // 奇物池：宝箱、挑战奖励、商店都从这里出；逐梦者之戒和《雪女》另有来源
+  const RELIC_POOL = ["netsuke", "hollowHeart", "watch", "encyclopedia", "hammerRelic", "beeswax"];
+
+  /* 奇遇：文字照抄策划表。fx 是结果：hp 增减血量，remove 让你挑牌删掉，gain 随机得牌，
+     curse 得诅咒，relic 得奇物，strength 下一场敌人加力量，newMap 换一个停车场。 */
+  const EVENTS = [
+    {
+      id: "misstep", name: "意外踩空",
+      text: "你穿行在沾满灰尘的车辆中间，紧绷的神经提防着随处可能出现的敌人。突然，你脚下一空……\n在下坠的过程中，你看见下方是无尽的黑暗，黑暗中似乎有一团红色的正在蠕动的生物。",
+      options: [
+        { label: "抓住命运的提线", effect: "删去1张牌，随机获得2张牌",
+          outcomes: [{ fx: [{ remove: 1 }, { gain: 2 }], note: "香橼中学对于人的束缚把你拽回去了，可以是想起来还有啥没交然后停止下坠缓缓上升" }] },
+        { label: "坠入黑暗", effect: "失去1点生命",
+          outcomes: [{ fx: [{ hp: -1 }], note: "黑暗排斥你，但是依旧受伤了" }] },
+        { label: "坠入红色不明物质", effect: "获得1张诅咒",
+          outcomes: [{ fx: [{ curse: 1 }], note: "被弹上去了，但是沾了点幼虫" }] }
+      ]
+    },
+    {
+      id: "elevator", name: "显眼的电梯",
+      text: "你在一个死胡同的墙壁上看见了一扇银色的金属电梯门，旁边的按钮闪着微光。但你清楚，凡派尔商务大厦根本就没有电梯。",
+      options: [
+        { label: "进入电梯", effect: "失去2点生命/无事发生/删去2张牌，随机获得2张牌，前往一个新的停车场",
+          outcomes: [
+            { fx: [{ hp: -2 }], note: "失去生命是因为剧烈的上下晃动摔的" },
+            { fx: [] },
+            { fx: [{ remove: 2 }, { gain: 2 }, { newMap: true }] }
+          ] },
+        { label: "无视", effect: "无事发生", outcomes: [{ fx: [] }] }
+      ]
+    },
+    {
+      id: "boy", name: "无助的男孩",
+      text: "你看到一个站在废弃车辆旁边的男孩。他在注意到你以后，带着哭腔向你说道：“我找不到爸爸妈妈了，你可以带我出去吗？”",
+      options: [
+        { label: "带上他", effect: "获得1个奇物，在你的下一场战斗开始时，所有敌人获得1点力量。",
+          outcomes: [{ fx: [{ relic: "netsuke" }, { strength: 1 }] }] },
+        { label: "拒绝", effect: "无事发生", outcomes: [{ fx: [] }] }
+      ]
+    },
+    {
+      id: "lookBack", name: "不要回头",
+      text: "你在小心避让停车场顶部管道渗出的淤泥时，你感觉被人拍了拍肩膀。",
+      options: [
+        { label: "回头", effect: "50%获得1张诅咒，50%获得1个奇物",
+          outcomes: [
+            { fx: [{ curse: 1 }], note: "背后没有人，你似乎听到了一阵咯咯的笑声" },
+            { fx: [{ relic: "random" }], note: "背后没有人，你看到地上有一个包裹，打开来里面是一个奇物。" }
+          ] },
+        { label: "无视", effect: "无事发生", outcomes: [{ fx: [] }] }
+      ]
+    }
+  ];
+
   QW.data = {
-    CONFIG, SHADOW_SLOT_HP, PAWN, FACTIONS, CARDS, ENEMIES, RELICS,
-    STARTER_DECK, SUMMON_POOL, WEAK, STRONG, PRESETS, randomEncounter
+    CONFIG, BROKEN_SLOT_RULES, SHADOW_SLOT_HP, PAWN, FACTIONS, CARDS, ENEMIES, RELICS,
+    STARTER_DECK, SUMMON_POOL, WEAK, STRONG, PRESETS, randomEncounter,
+    NODE_TYPES, RUN, RELIC_POOL, EVENTS
   };
 })(typeof window !== "undefined" ? window : globalThis);
