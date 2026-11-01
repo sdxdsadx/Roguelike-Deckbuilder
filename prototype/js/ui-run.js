@@ -43,6 +43,13 @@
     if (!run || !run.record || !run.visited.length) return null;
     const rec = QW.record.fromRun(run, U.S.set);
     if (!RC.put(rec)) U.flash("浏览器里存不下这份记录了，请直接下载");
+    // 开了后台的网站上，顺便传给策划；结果写在局末页面的说明里
+    RC.upload(rec).then(state => {
+      if (state === "same") return;
+      RS.uploadState = state;
+      const el = document.getElementById("upload-note");
+      if (el) el.textContent = RC.uploadText(state);
+    });
     return rec;
   }
 
@@ -99,6 +106,7 @@
     s.runSeed = String(seed);
     U.saveSettings();
     abandonRecord(RS.run);  // 覆盖掉没打完的上一局：记成放弃
+    RS.uploadState = null;
     RS.run = R.createRun({ seed: s.runSeed, run: s.run, config: s.config });
     RS.confirmNew = false;
     window.scrollTo(0, 0);
@@ -131,7 +139,7 @@
     $("#run").innerHTML = '<div class="run-start">'
       + '<section class="box" aria-labelledby="h-run"><h2 id="h-run">第一区域</h2>'
       + `<p>一共 12 层。第 1 层打小怪，第 6 层固定是宝箱，第 11 层是阳台，第 12 层打 Boss「${esc(D.ENEMIES.phantom.name)}」；其余各层${s.run.optionPattern === "three" ? "都有 3 个选项" : "的选项数 2 个、3 个交替"}，任选一个往上走。整张地图开局就能看到，血量、卡组、金币和奇物一路带着走。</p>`
-      + (saved ? `<div class="resume"><p>上一局停在第 ${saved.floor} 层，生命 ${saved.hp}/${saved.maxHp}，金币 ${saved.gold}。</p><button type="button" class="btn-main" data-ract="resume">继续上一局</button></div>` : "")
+      + (saved ? `<div class="resume"><p>上一局停在第 ${saved.floor} 层，生命 ${saved.hp}/${saved.maxHp}，金币 ${saved.gold}。</p><div class="actions-row"><button type="button" class="btn-main" data-ract="resume">继续上一局</button><button type="button" class="btn" data-ract="map">看这一局的地图</button></div></div>` : "")
       + (last ? `<p class="note">上一局（种子 ${esc(last.seed)}，${last.result === "win" ? "通关" : "失败"}）的记录在「对局记录」里，可以在那里补填问卷、下载。</p>` : "")
       + `<div class="seed-row"><label class="field" for="run-seed">随机种子<input id="run-seed" type="text" maxlength="24" data-rset="runSeed" value="${esc(s.runSeed)}"></label><button type="button" class="btn" data-ract="seed-new">换一个</button></div>`
       + `<div class="actions-row"><button type="button" class="${saved ? "btn" : "btn-main"}" data-ract="new">${saved && RS.confirmNew ? "会覆盖上一局，再点一次确认" : "开始新的一局"}</button></div>`
@@ -343,7 +351,8 @@
       + `<div class="actions-row"><button type="button" class="btn-main" data-ract="survey-dl">${done ? "更新问卷并下载记录" : "提交问卷并下载记录"}</button>`
       + `<button type="button" class="btn" data-ract="survey-save">${done ? "只更新问卷" : "只提交问卷"}</button>`
       + '<button type="button" class="btn" data-ract="record-dl">只下载记录</button></div>'
-      + '<p class="note">记录是一个 JSON 文件，里面有这一局的路线、每一步的选择、每场战斗的日志和问卷的答案，直接发给策划就行。所有记录都能在顶上的「对局记录」里找到。</p></section>';
+      + '<p class="note">记录是一个 JSON 文件，里面有这一局的路线、每一步的选择、每场战斗的日志和问卷的答案，直接发给策划就行。所有记录都能在顶上的「对局记录」里找到。</p>'
+      + `<p class="note" id="upload-note">${esc(RC.uploadText(RS.uploadState))}</p></section>`;
   }
 
   function topInfo(run) {
@@ -385,6 +394,12 @@
     }
   }
 
+  /* 卡组、奇物、地图三个弹窗底下互相切换的按钮。 */
+  function viewSwitch(current) {
+    return [["map", "地图"], ["deck", "卡组"], ["relics", "奇物"]].filter(([k]) => k !== current)
+      .map(([k, label]) => `<button type="button" class="btn" data-view="${k}">${label}</button>`).join("");
+  }
+
   /* 顶栏上看东西的按钮：卡组、奇物，不在地图页时还有地图。 */
   function viewActions(run, withMap) {
     const n = Object.keys(run.relics).filter(id => run.relics[id]).length;
@@ -404,7 +419,7 @@
       + (preview ? '<p class="note">能升级的牌显示的是升级以后的样子（带「升级后」标记）；已经升级过的牌和不能升级的牌照旧。</p>' : "")
       + `<div class="deck-grid">${shown.map((c, i) => U.ticket(c, { tag: "div", cls: ["small"].concat(preview && R.canUpgrade(cards[i]) ? ["preview"] : []) })).join("")}</div>`
       + U.glossaryHtml(shown, "这副牌里的术语")
-      + '<div class="actions"><button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>');
+      + `<div class="actions">${viewSwitch("deck")}<button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>`);
   }
 
   /* 奇物现在的状态。战斗里以这一场的数为准（逐梦者之戒的护甲、根付用没用掉）。 */
@@ -434,7 +449,7 @@
     }).join("");
     U.openModal(`<div class="result relic-view" role="dialog" aria-modal="true" aria-labelledby="relic-title"><h2 id="relic-title">奇物 ${ids.length} 个</h2>`
       + (items ? `<ul class="relic-list">${items}</ul>` : '<p class="note">还没有奇物。</p>')
-      + '<div class="actions"><button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>');
+      + `<div class="actions">${viewSwitch("relics")}<button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>`);
   }
 
   /* 在别的页面看地图：只能看，不能走。 */
@@ -443,9 +458,9 @@
     if (!run) return;
     const legend = Object.entries(TYPE_NAME).map(([k, v]) => `<span class="lg t-${k}">${v}</span>`).join("");
     U.openModal(`<div class="result map-view" role="dialog" aria-modal="true" aria-labelledby="map-title"><h2 id="map-title">地图</h2>`
-      + `<p class="note">你现在在${esc(floorText(run))}；亮起来的是下一层能去的地方。这里只能看，做完这一页的事再回地图选路。</p>`
+      + `<p class="note">你现在在${esc(floorText(run))}；亮起来的是下一层能去的地方。这里只能看，做完这一页的事再回地图选路。按 M 也能打开、关上地图。</p>`
       + mapHtml(run, true) + `<div class="map-legend">${legend}</div>`
-      + '<div class="actions"><button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>');
+      + `<div class="actions">${viewSwitch("map")}<button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>`);
     const here = document.querySelector("#modal .mnode.here") || document.querySelector("#modal .mnode.avail");
     if (here) here.scrollIntoView({ block: "center" });
   }
@@ -474,9 +489,9 @@
     },
     result: c => c.result === "win"
       ? { cls: "win", title: { battle: "战斗胜利", elite: "挑战胜利", boss: "击败了血色魅影" }[RS.run.screen.type], rows: QW.ui.combat.statRows(c),
-        buttons: [{ act: "continue", label: "领取奖励", main: true }, { act: "close-result", label: "回去看战场" }] }
+        buttons: [{ act: "continue", label: "领取奖励", main: true }, { act: "map", label: "地图" }, { act: "close-result", label: "回去看战场" }] }
       : { cls: "lose", title: "你倒下了", rows: QW.ui.combat.statRows(c),
-        buttons: [{ act: "continue", label: "看这局总结", main: true }, { act: "retry", label: "重打这一场" }, { act: "close-result", label: "回去看战场" }] },
+        buttons: [{ act: "continue", label: "看这局总结", main: true }, { act: "retry", label: "重打这一场" }, { act: "map", label: "地图" }, { act: "close-result", label: "回去看战场" }] },
     continueLabel: c => (c.result === "win" ? "领取奖励" : "看这局总结"),
     debug: [{ act: "retry", label: "重打这一场" }]
   };
@@ -524,6 +539,7 @@
       case "again-same": newRun(run.seed); return;
       case "to-start": renderStart(); return;
       case "deck": showDeck(false); return;
+      case "map": showMap(); return;
       case "survey-dl": submitSurvey(true); return;
       case "survey-save": submitSurvey(false); return;
       case "record-dl": { const rec = keepRecord(run); if (rec) RC.download(rec); return; }
@@ -564,10 +580,22 @@
 
   $("#run").addEventListener("click", onClick);
   $("#run").addEventListener("change", onChange);
+  document.addEventListener("keydown", ev => {
+    if (ev.key !== "m" && ev.key !== "M") return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || U.S.set.mode !== "run" || !RS.run) return;
+    const t = ev.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    const m = $("#modal");
+    if (!m.hidden && m.dataset.keep === "1") return;  // 正在填问卷
+    if (!m.hidden && m.querySelector(".map-view")) U.closeModal(); else showMap();
+  });
   $("#modal").addEventListener("click", ev => {
-    const b = ev.target.closest("[data-deck-preview], [data-info]");
+    const b = ev.target.closest("[data-deck-preview], [data-info], [data-view]");
     if (!b || !RS.run) return;
-    if (b.dataset.deckPreview) showDeck(b.dataset.deckPreview === "1");
+    if (b.dataset.view === "map") showMap();
+    else if (b.dataset.view === "deck") showDeck(false);
+    else if (b.dataset.view === "relics") showRelics();
+    else if (b.dataset.deckPreview) showDeck(b.dataset.deckPreview === "1");
     else if (b.dataset.info === "boss") showBossTip(b);
   });
 

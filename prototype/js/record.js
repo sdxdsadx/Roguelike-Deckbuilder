@@ -107,18 +107,31 @@
     return ev && opt ? `${ev.name}：${opt.label}` : String(t.text);
   }
 
+  const baseName = n => String(n).replace(/\+$/, "");
+  const godMode = r => !!(r.settings && r.settings.god && (r.settings.god.lockHp || r.settings.god.infiniteEnergy));
+
   /* 汇总：局数和胜负、走到第几层、每场战斗的平均回合和掉血、选路、卡牌奖励的选取率、奇遇怎么选、
-     出牌次数、输在谁手上，以及问卷。 */
-  function aggregate(records) {
+     出牌次数、输在谁手上，以及问卷。
+     每张牌（升级前后算同一张）：奖励里出现几次、被拿走几次、商店买了几次、删了几次、升级了几次、
+     最后的卡组里有它的局有几局、这些局里打完了的（通关或失败）有几局、通关几局，以及打出次数。奇物同理。
+     opts.skipGod：不算开了锁血或无限费用的记录（它们会让胜率变得不准）。 */
+  function aggregate(input, opts) {
+    const o = opts || {};
+    const records = o.skipGod ? input.filter(r => !godMode(r)) : input;
     const out = {
-      total: records.length, runs: 0, sandbox: 0,
+      total: records.length, skipped: input.length - records.length, runs: 0, sandbox: 0,
       results: { run: { win: 0, lose: 0, abandoned: 0, unfinished: 0 }, sandbox: { win: 0, lose: 0, unfinished: 0 } },
-      runEnds: [], fights: 0, fightTurns: 0, fightHpLost: 0,
+      runEnds: [], fights: 0, fightTurns: 0, fightHpLost: 0, finished: 0, wins: 0,
       nodeChoices: table(), cardOffers: table(), rewardSkips: 0, rewardPicks: 0, eventChoices: table(),
-      cardPlays: table(), lostTo: table(), survey: table(), surveyed: 0
+      cardPlays: table(), cards: table(), relics: table(), lostTo: table(), survey: table(), surveyed: 0
     };
     const add = (map, k, n) => { const key = String(k); map[key] = (map[key] || 0) + (n == null ? 1 : num(n)); };
     const offer = k => out.cardOffers[String(k)] || (out.cardOffers[String(k)] = { offered: 0, picked: 0 });
+    const card = k => {
+      const key = baseName(k);
+      return out.cards[key] || (out.cards[key] = { offered: 0, picked: 0, bought: 0, removed: 0, upgraded: 0, runs: 0, finished: 0, wins: 0, plays: 0 });
+    };
+    const relic = k => out.relics[String(k)] || (out.relics[String(k)] = { runs: 0, finished: 0, wins: 0 });
     for (const r of records) {
       if (r.mode === "run") out.runs++; else out.sandbox++;
       const res = out.results[r.mode === "run" ? "run" : "sandbox"];
@@ -129,16 +142,37 @@
       for (const t of arr(r.timeline)) {
         if (!t || !t.data) continue;
         if (t.kind === "cards" && Array.isArray(t.data.offered)) {
-          t.data.offered.forEach(k => { offer(k).offered++; });
-          if (t.data.picked) { offer(t.data.picked).picked++; out.rewardPicks++; } else out.rewardSkips++;
+          t.data.offered.forEach(k => { offer(k).offered++; card(k).offered++; });
+          if (t.data.picked) { offer(t.data.picked).picked++; card(t.data.picked).picked++; out.rewardPicks++; } else out.rewardSkips++;
         } else if (t.kind === "event") add(out.eventChoices, eventKey(t));
+        else if (t.kind === "buy" && t.data.card) card(t.data.card).bought++;
+        else if (t.kind === "remove" && t.data.card) card(t.data.card).removed++;
+        else if (t.kind === "upgrade" && t.data.card) card(t.data.card).upgraded++;
+      }
+      // 胜率：只看完整一局；打完了（通关或失败）才算进分母，放弃和没打完的不算
+      if (r.mode === "run") {
+        const done = r.result === "win" || r.result === "lose";
+        const won = r.result === "win";
+        if (done) { out.finished++; if (won) out.wins++; }
+        for (const name of new Set(arr(r.finalDeck).map(baseName))) {
+          const c = card(name);
+          c.runs++;
+          if (done) { c.finished++; if (won) c.wins++; }
+        }
+        for (const name of new Set(arr(s.relics).map(String))) {
+          const x = relic(name);
+          x.runs++;
+          if (done) { x.finished++; if (won) x.wins++; }
+        }
       }
       for (const f of arr(r.fights)) {
         if (!f) continue;
         out.fights++;
         out.fightTurns += num(f.turns);
         out.fightHpLost += num(f.hpLost);
-        if (f.played && typeof f.played === "object") for (const k of Object.keys(f.played)) add(out.cardPlays, k, f.played[k]);
+        if (f.played && typeof f.played === "object") {
+          for (const k of Object.keys(f.played)) { add(out.cardPlays, k, f.played[k]); card(k).plays += num(f.played[k]); }
+        }
         if (f.result === "lose") for (const e of arr(f.enemies)) add(out.lostTo, e);
       }
       const ans = r.survey && r.survey.answers;
@@ -180,5 +214,5 @@
     return { at: new Date().toISOString(), answers: clone(answers), questions };
   }
 
-  QW.record = { FORMAT, BUNDLE, fromRun, fromSandbox, isRecord, normalizeImport, bundle, fileName, bundleName, aggregate, dedupe, sort, makeSurvey };
+  QW.record = { FORMAT, BUNDLE, fromRun, fromSandbox, isRecord, normalizeImport, bundle, fileName, bundleName, aggregate, dedupe, sort, makeSurvey, godMode };
 })(typeof window !== "undefined" ? window : globalThis);
