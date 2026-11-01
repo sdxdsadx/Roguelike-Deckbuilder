@@ -14,7 +14,7 @@
 
   const RUN_FIELDS = [
     ["floors", "一共几层（含 Boss）"], ["rewardFloor", "固定出宝箱的层"], ["startGold", "开局金币"], ["goldBattle", "普通战斗掉金币"], ["goldElite", "挑战掉金币"],
-    ["goldBoss", "Boss 掉金币"], ["restHeal", "阳台回血"], ["rarePct", "梦想卡出现率（%）"], ["eliteRarePct", "挑战后梦想卡出现率（%）"],
+    ["goldBoss", "Boss 掉金币"], ["restHeal", "阳台回血"], ["rarePct", "每组卡牌奖励带梦想卡的概率（%）"], ["eliteRarePct", "挑战后带梦想卡的概率（%）"],
     ["shopCards", "商店卖几张牌"], ["shopRelics", "商店卖几个奇物"], ["cardPrice", "商店卡牌价格"]
   ];
   const WEIGHT_FIELDS = [["event", "奇遇"], ["elite", "挑战"], ["rest", "阳台"], ["shop", "商店"]];
@@ -130,7 +130,7 @@
       `<label class="field" for="w-${k}">${label}<input id="w-${k}" type="number" inputmode="numeric" data-rweight="${k}" min="0" max="100" value="${s.run.weights[k]}"></label>`).join("");
     $("#run").innerHTML = '<div class="run-start">'
       + '<section class="box" aria-labelledby="h-run"><h2 id="h-run">第一区域</h2>'
-      + "<p>一共 12 层。第 1 层打小怪，第 6 层固定是宝箱，第 11 层是阳台，第 12 层打血色魅影；其余每层有 3 个选项，任选一个往上走。整张地图开局就能看到，血量、卡组、金币和奇物一路带着走。</p>"
+      + `<p>一共 12 层。第 1 层打小怪，第 6 层固定是宝箱，第 11 层是阳台，第 12 层打 Boss「${esc(D.ENEMIES.phantom.name)}」；其余各层${s.run.optionPattern === "three" ? "都有 3 个选项" : "的选项数 2 个、3 个交替"}，任选一个往上走。整张地图开局就能看到，血量、卡组、金币和奇物一路带着走。</p>`
       + (saved ? `<div class="resume"><p>上一局停在第 ${saved.floor} 层，生命 ${saved.hp}/${saved.maxHp}，金币 ${saved.gold}。</p><button type="button" class="btn-main" data-ract="resume">继续上一局</button></div>` : "")
       + (last ? `<p class="note">上一局（种子 ${esc(last.seed)}，${last.result === "win" ? "通关" : "失败"}）的记录在「对局记录」里，可以在那里补填问卷、下载。</p>` : "")
       + `<div class="seed-row"><label class="field" for="run-seed">随机种子<input id="run-seed" type="text" maxlength="24" data-rset="runSeed" value="${esc(s.runSeed)}"></label><button type="button" class="btn" data-ract="seed-new">换一个</button></div>`
@@ -138,8 +138,11 @@
       + "</section>"
       + '<section class="box" aria-labelledby="h-run-rules"><div class="box-head"><h2 id="h-run-rules">这一局的数</h2><button type="button" class="btn" data-ract="cfg-reset">恢复默认</button></div>'
       + `<div class="fields">${fields}</div><h3 class="sub">随机层的另外 2 个选项按这个比例分配（每个随机层固定有 1 个战斗）</h3><div class="fields">${weights}</div>`
-      + `<label class="toggle"><input type="checkbox" data-rflag="noStreak"${s.run.noStreak !== false ? " checked" : ""}>不扎堆：同一类节点不会连着出现 3 层；只有 1–2 个的（默认是商店）不会出现在相邻两层</label>`
-      + "<p class=\"note\">层数和固定层已经确认，金币和商店卡牌价格是问卷里定的；宝箱放在第几层、节点比例、不扎堆、阳台回血、梦想卡出现率、商店货量是我先定的默认值（待确认），改完下一局生效。奇遇默认有 7 个、随机层只有 8 层，怎么摆都会连着出现，所以不扎堆管不到它。卡牌和敌人的数值、锁血和无限费用在「战斗沙盒」的设置页里改，两边通用。</p>"
+      + `<label class="field wide" for="run-pattern">随机层的选项数<select id="run-pattern" data-rpick="optionPattern">`
+      + `<option value="alternate"${s.run.optionPattern !== "three" ? " selected" : ""}>2 个、3 个交替</option>`
+      + `<option value="three"${s.run.optionPattern === "three" ? " selected" : ""}>每层都是 3 个</option></select></label>`
+      + `<label class="toggle"><input type="checkbox" data-rflag="noStreak"${s.run.noStreak !== false ? " checked" : ""}>不扎堆：同一类节点不会连着出现 3 层；只有 1–2 个的（默认是阳台和商店）不会出现在相邻两层</label>`
+      + "<p class=\"note\">层数和固定层已经确认，金币和商店卡牌价格是问卷里定的；宝箱放在第几层、节点比例、不扎堆、阳台回血、梦想卡出现率、商店货量是我先定的默认值（待确认），改完下一局生效。梦想卡出现率是「每组卡牌奖励里带 1 张梦想卡」的概率，一组最多 1 张。卡牌和敌人的数值、锁血和无限费用在「战斗沙盒」的设置页里改，两边通用。</p>"
       + "</section></div>";
   }
 
@@ -161,8 +164,9 @@
       + `<div class="relic-row">${relicButtons(run)}</div></div>`;
   }
 
-  /* 地图：从下往上，第 1 层在最下面。每层的选项横着排开；走过的路连成实线，从当前位置到下一层的选项画虚线。 */
-  function mapHtml(run) {
+  /* 地图：从下往上，第 1 层在最下面。每层的选项横着排开；走过的路连成实线，从当前位置到下一层的选项画虚线。
+     readonly：在别的页面弹出来看的地图，节点点不了（Boss 还能点开看说明）。 */
+  function mapHtml(run, readonly) {
     const rows = run.map.rows.slice().sort((a, b) => a.floor - b.floor);
     const n = rows.length;
     const first = rows[0].floor;
@@ -173,20 +177,30 @@
       const xs = xsFor(r.options.length);
       r.options.forEach((o, i) => { pos[o.id] = { x: xs[i], y: yOf(r.floor) }; });
     }
-    const avail = new Set(R.available(run));
+    const avail = new Set(readonly ? [] : R.available(run));
+    const next = new Set((run.map.rows.find(r => r.floor === run.floor + 1) || { options: [] }).options.map(o => o.id));
     const seg = (a, b, cls) => `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="${cls}"></line>`;
     const walked = run.visited.filter(id => pos[id]);
     let lines = "";
     for (let k = 1; k < walked.length; k++) lines += seg(pos[walked[k - 1]], pos[walked[k]], "walked");
     if (run.pos && pos[run.pos] && !run.freeTravel) for (const id of avail) lines += seg(pos[run.pos], pos[id], "open");
+    const boss = D.ENEMIES.phantom.name;
     const btn = o => {
       const can = avail.has(o.id);
       const cls = ["mnode", "t-" + o.type];
-      if (can) cls.push("avail");
+      if (can || (readonly && next.has(o.id))) cls.push("avail");
       if (run.visited.includes(o.id)) cls.push("visited");
       if (run.pos === o.id) cls.push("here");
-      const where = o.type === "boss" ? "第 12 层，Boss：血色魅影" : `第 ${o.floor} 层，${TYPE_NAME[o.type]}`;
-      return `<button type="button" class="${cls.join(" ")}" data-node="${o.id}" style="left:${pos[o.id].x}%;top:${pos[o.id].y}%"${can ? "" : " disabled"} aria-label="${esc(where)}${can ? "，可以去" : ""}">${TYPE_NAME[o.type]}</button>`;
+      const style = `left:${pos[o.id].x}%;top:${pos[o.id].y}%`;
+      if (o.type === "boss") {
+        // Boss 节点写上是谁；还去不了的时候点它看说明
+        const label = `第 ${o.floor} 层 Boss：${boss}${can ? "，可以去" : "，点开看说明"}`;
+        const attrs = can ? `data-node="${o.id}"` : 'data-info="boss"';
+        return `<button type="button" class="${cls.join(" ")}" ${attrs} style="${style}" aria-label="${esc(label)}"><span class="bn-tag">Boss</span><span class="bn-name">${esc(boss)}</span></button>`;
+      }
+      const where = `第 ${o.floor} 层，${TYPE_NAME[o.type]}`;
+      if (readonly) return `<span class="${cls.join(" ")}" style="${style}" role="img" aria-label="${esc(where)}">${TYPE_NAME[o.type]}</span>`;
+      return `<button type="button" class="${cls.join(" ")}" data-node="${o.id}" style="${style}"${can ? "" : " disabled"} aria-label="${esc(where)}${can ? "，可以去" : ""}">${TYPE_NAME[o.type]}</button>`;
     };
     const labels = rows.map(r => `<span class="floor-no${r.floor === run.floor + 1 ? " next" : ""}" style="top:${yOf(r.floor)}%">${r.floor}</span>`).join("");
     const bands = rows.map(r => r.floor === run.floor + 1 ? `<span class="floor-band" style="top:${yOf(r.floor)}%"></span>` : "").join("");
@@ -196,7 +210,7 @@
 
   function mapScreen(run) {
     const legend = Object.entries(TYPE_NAME).map(([k, v]) => `<span class="lg t-${k}">${v}</span>`).join("");
-    return `<section class="map-screen" aria-labelledby="h-map"><div class="box-head"><h2 id="h-map">第一区域地图</h2><span class="hint">从下往上走，每层任选一个；整张地图开局就能看到</span></div>`
+    return `<section class="map-screen" aria-labelledby="h-map"><div class="box-head"><h2 id="h-map">第一区域地图</h2><span class="hint">从下往上走，每层任选一个；最上面是 Boss「${esc(D.ENEMIES.phantom.name)}」，点它看说明</span></div>`
       + mapHtml(run) + `<div class="map-legend">${legend}</div>`
       + '<details class="run-debug"><summary>调试</summary><div class="row-f">'
       + '<button type="button" class="btn" data-ract="dbg-gold">金币 +10</button>'
@@ -216,6 +230,7 @@
     let body = "";
     if (s.kind === "cards") {
       body = `<div class="hand pick-row">${s.options.map((c, i) => U.ticket(c, { attrs: `data-ract="pick" data-i="${i}"` })).join("")}</div>`
+        + U.glossaryHtml(s.options)
         + '<div class="actions-row"><button type="button" class="btn" data-ract="skip">不要了，跳过</button></div>';
     } else if (s.kind === "remove") {
       body = `<div class="deck-grid">${run.deck.map((c, i) => U.ticket(c, { attrs: `data-ract="pick" data-i="${i}"`, cls: ["small"] })).join("")}</div>`;
@@ -240,7 +255,7 @@
     let html = `<section class="box event" aria-labelledby="h-ev"><h2 id="h-ev">${esc(ev.name)}</h2><div class="event-text">${ev.text.split("\n").map(p => `<p>${esc(p)}</p>`).join("")}</div>`;
     if (sc.choice == null) {
       html += `<div class="choices">${ev.options.map((o, i) =>
-        `<button type="button" class="choice" data-ract="choose" data-i="${i}"><b>${esc(o.label)}</b><span>${esc(o.effect)}</span></button>`).join("")}</div>`;
+        `<button type="button" class="choice" data-ract="choose" data-i="${i}"><b>${esc(o.label)}</b><span>${esc(o.effect)}</span>${o.detail ? `<small>${esc(o.detail)}</small>` : ""}</button>`).join("")}</div>`;
     } else {
       html += `<div class="outcome"><p class="chosen">你选了「${esc(ev.options[sc.choice].label)}」</p>${notesHtml(sc.lines)}`
         + (sc.note ? `<p class="record">表里的记录：${esc(sc.note)}</p>` : "") + "</div>";
@@ -261,7 +276,7 @@
     const relics = sh.relics.map((r, i) => `<button type="button" class="relic-item" data-ract="buy-relic" data-i="${i}"${r.sold ? " disabled" : ""}>`
       + `<b>${esc(D.RELICS[r.id].name)}</b><span>${esc(D.RELICS[r.id].text)}</span><span class="price">${r.sold ? "已买" : `${r.price} 金币`}</span></button>`).join("");
     return `<section class="box shop" aria-labelledby="h-shop"><div class="box-head"><h2 id="h-shop">商店</h2><span class="hint">你有 ${run.gold} 金币</span></div>`
-      + `<h3 class="sub">卡牌</h3><div class="hand shop-row">${cards || '<span class="note">没有卡牌卖</span>'}</div>`
+      + `<h3 class="sub">卡牌</h3><div class="hand shop-row">${cards || '<span class="note">没有卡牌卖</span>'}</div>${U.glossaryHtml(sh.cards)}`
       + `<h3 class="sub">奇物</h3><div class="relic-shop">${relics || '<span class="note">没有奇物卖</span>'}</div>`
       + `<h3 class="sub">删牌</h3><div class="actions-row"><button type="button" class="btn" data-ract="buy-removal"${sh.removeUsed ? " disabled" : ""}>${sh.removeUsed ? "这个商店已经删过一次牌了" : `花 ${price} 金币删一张牌`}</button></div>`
       + notesHtml(run.screen.notes) + stepHtml(run) + continueBtn(run, "离开商店") + "</section>";
@@ -336,7 +351,9 @@
   }
 
   function onTop(a) {
-    if (a === "deck") showDeck();
+    if (a === "deck") showDeck(false);
+    else if (a === "relics") showRelics();
+    else if (a === "map") showMap();
     else if (a === "abandon") {
       if (!RS.confirmAbandon) { armConfirm("confirmAbandon"); renderPlay(); return; }
       RS.confirmAbandon = false;
@@ -352,8 +369,8 @@
     showMain();
     const run = RS.run;
     const ended = run.screen.kind === "end";
-    U.setTop(topInfo(run), [{ act: "deck", label: `卡组 ${run.deck.length}` }].concat(ended ? [] : [{ act: "abandon", label: RS.confirmAbandon ? "确定放弃这一局？再点一次" : "放弃这一局" }]), onTop);
     const kind = run.screen.kind;
+    U.setTop(topInfo(run), viewActions(run, kind !== "map").concat(ended ? [] : [{ act: "abandon", label: RS.confirmAbandon ? "确定放弃这一局？再点一次" : "放弃这一局" }]), onTop);
     const body = kind === "map" ? mapScreen(run)
       : kind === "event" ? eventScreen(run)
         : kind === "shop" ? shopScreen(run)
@@ -368,14 +385,74 @@
     }
   }
 
-  function showDeck() {
+  /* 顶栏上看东西的按钮：卡组、奇物，不在地图页时还有地图。 */
+  function viewActions(run, withMap) {
+    const n = Object.keys(run.relics).filter(id => run.relics[id]).length;
+    return [{ act: "deck", label: `卡组 ${run.deck.length}` }, { act: "relics", label: `奇物 ${n}` }].concat(withMap ? [{ act: "map", label: "地图" }] : []);
+  }
+
+  /* 卡组：preview 时能升级的牌显示升级后的样子。下面列出这副牌里出现的术语。 */
+  function showDeck(preview) {
     const run = RS.run;
     if (!run) return;
     const order = { "攻击": 0, "防御": 1, "技能": 2, "能力": 3, "状态": 4, "诅咒": 5 };
     const cards = run.deck.slice().sort((a, b) => order[D.CARDS[a.id].type] - order[D.CARDS[b.id].type] || D.CARDS[a.id].name.localeCompare(D.CARDS[b.id].name, "zh"));
+    const shown = cards.map(c => (preview && R.canUpgrade(c) ? { id: c.id, up: true } : c));
+    const canAny = run.deck.some(R.canUpgrade);
     U.openModal(`<div class="result deck-view" role="dialog" aria-modal="true" aria-labelledby="deck-title"><h2 id="deck-title">卡组 ${run.deck.length} 张</h2>`
-      + `<div class="deck-grid">${cards.map(c => U.ticket(c, { tag: "div", cls: ["small"] })).join("")}</div>`
+      + (canAny ? `<div class="actions"><button type="button" class="btn" data-deck-preview="${preview ? "0" : "1"}" aria-pressed="${!!preview}">${preview ? "看现在的效果" : "看升级后的效果"}</button></div>` : "")
+      + (preview ? '<p class="note">能升级的牌显示的是升级以后的样子（带「升级后」标记）；已经升级过的牌和不能升级的牌照旧。</p>' : "")
+      + `<div class="deck-grid">${shown.map((c, i) => U.ticket(c, { tag: "div", cls: ["small"].concat(preview && R.canUpgrade(cards[i]) ? ["preview"] : []) })).join("")}</div>`
+      + U.glossaryHtml(shown, "这副牌里的术语")
       + '<div class="actions"><button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>');
+  }
+
+  /* 奇物现在的状态。战斗里以这一场的数为准（逐梦者之戒的护甲、根付用没用掉）。 */
+  function relicState(run, id) {
+    const c = QW.ui.combat.current();
+    const ring = c ? c.ring : run.ring;
+    const netsukeUsed = c ? c.netsukeUsed : run.netsukeUsed;
+    if (id === "ring") return ring > 0 ? `还剩 ${ring} 点护甲` : "护甲用完了，已经失效";
+    if (id === "netsuke") return netsukeUsed ? "已经用掉了，失效" : "还没用过";
+    if (id === "beeswax") return run.waxSlot != null ? `蜂蜡卡槽在第 ${run.waxSlot + 1} 槽` : "还没选卡槽";
+    if (id === "brokenPage") return run.firstReward ? "还没用：第一次选牌会多 1 个选项" : "已经用过了";
+    return "";
+  }
+
+  function showRelics() {
+    const run = RS.run;
+    if (!run) return;
+    const ids = Object.keys(run.relics).filter(id => run.relics[id]);
+    const items = ids.map(id => {
+      const r = D.RELICS[id];
+      const st = relicState(run, id);
+      const from = run.relicFrom && run.relicFrom[id];
+      return `<li><div class="rl-head"><b>${esc(r.name)}</b><span class="rl-rar">${esc(r.rarity)}</span></div><p>${esc(r.text)}</p>`
+        + (st ? `<p class="rl-state">${esc(st)}</p>` : "")
+        + (from ? `<p class="note">来源：${esc(from)}</p>` : "")
+        + (r.flavor ? `<p class="flavor">${esc(r.flavor)}</p>` : "") + "</li>";
+    }).join("");
+    U.openModal(`<div class="result relic-view" role="dialog" aria-modal="true" aria-labelledby="relic-title"><h2 id="relic-title">奇物 ${ids.length} 个</h2>`
+      + (items ? `<ul class="relic-list">${items}</ul>` : '<p class="note">还没有奇物。</p>')
+      + '<div class="actions"><button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>');
+  }
+
+  /* 在别的页面看地图：只能看，不能走。 */
+  function showMap() {
+    const run = RS.run;
+    if (!run) return;
+    const legend = Object.entries(TYPE_NAME).map(([k, v]) => `<span class="lg t-${k}">${v}</span>`).join("");
+    U.openModal(`<div class="result map-view" role="dialog" aria-modal="true" aria-labelledby="map-title"><h2 id="map-title">地图</h2>`
+      + `<p class="note">你现在在${esc(floorText(run))}；亮起来的是下一层能去的地方。这里只能看，做完这一页的事再回地图选路。</p>`
+      + mapHtml(run, true) + `<div class="map-legend">${legend}</div>`
+      + '<div class="actions"><button type="button" class="btn-main" data-close-modal data-focus>关闭</button></div></div>');
+    const here = document.querySelector("#modal .mnode.here") || document.querySelector("#modal .mnode.avail");
+    if (here) here.scrollIntoView({ block: "center" });
+  }
+
+  function showBossTip(el) {
+    const b = D.ENEMIES.phantom;
+    U.showTip(`<h3>${esc(b.name)}（Boss，第 ${RS.run ? RS.run.cfg.floors : 12} 层）</h3><p>本体 ${b.hp} 血，5 个魅影卡槽各 ${b.slotHp} 血。</p><p>${esc(b.rule)}</p>`, el);
   }
 
   function showRelicTip(el) {
@@ -387,11 +464,13 @@
   /* ---------- 战斗 ---------- */
   const fightCtrl = {
     info: c => `<span>${esc(floorText(RS.run))}</span><span>${esc(TYPE_NAME[RS.run.screen.type])}</span><span>第 <b class="num">${c.turn}</b> 回合</span><span>金币 <b class="num">${RS.run.gold}</b></span>`,
-    actions: () => [{ act: "deck", label: `卡组 ${RS.run.deck.length}` }],
+    actions: () => viewActions(RS.run, true),
     onAct(a) {
       if (a === "continue") finishFight();
       else if (a === "retry") startFight();
-      else if (a === "deck") showDeck();
+      else if (a === "deck") showDeck(false);
+      else if (a === "relics") showRelics();
+      else if (a === "map") showMap();
     },
     result: c => c.result === "win"
       ? { cls: "win", title: { battle: "战斗胜利", elite: "挑战胜利", boss: "击败了血色魅影" }[RS.run.screen.type], rows: QW.ui.combat.statRows(c),
@@ -418,10 +497,11 @@
 
   /* ---------- 操作 ---------- */
   function onClick(ev) {
-    const t = ev.target.closest("[data-ract], [data-node], [data-rtip]");
+    const t = ev.target.closest("[data-ract], [data-node], [data-rtip], [data-info]");
     if (!t || t.disabled) return;
     const run = RS.run;
     if (t.dataset.rtip) { showRelicTip(t); return; }
+    if (t.dataset.info === "boss") { showBossTip(t); return; }
     if (t.dataset.node) {
       const r = R.go(run, t.dataset.node);
       if (!r.ok) { U.flash(r.reason); return; }
@@ -443,7 +523,7 @@
       case "again-new": newRun(U.randomSeed()); return;
       case "again-same": newRun(run.seed); return;
       case "to-start": renderStart(); return;
-      case "deck": showDeck(); return;
+      case "deck": showDeck(false); return;
       case "survey-dl": submitSurvey(true); return;
       case "survey-save": submitSurvey(false); return;
       case "record-dl": { const rec = keepRecord(run); if (rec) RC.download(rec); return; }
@@ -472,6 +552,7 @@
     const t = ev.target;
     const s = U.S.set;
     if (t.dataset.rflag) { s.run[t.dataset.rflag] = t.checked; U.saveSettings(); return; }
+    if (t.dataset.rpick) { s.run[t.dataset.rpick] = t.value; U.saveSettings(); renderStart(); return; }
     if (t.dataset.rset === "runSeed") { s.runSeed = t.value.trim().slice(0, 24) || U.randomSeed(); U.saveSettings(); return; }
     const v = Number(t.value);
     if (t.value === "" || !Number.isFinite(v)) return;
@@ -483,6 +564,12 @@
 
   $("#run").addEventListener("click", onClick);
   $("#run").addEventListener("change", onChange);
+  $("#modal").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-deck-preview], [data-info]");
+    if (!b || !RS.run) return;
+    if (b.dataset.deckPreview) showDeck(b.dataset.deckPreview === "1");
+    else if (b.dataset.info === "boss") showBossTip(b);
+  });
 
   QW.ui.run = { show, renderStart };
 })();

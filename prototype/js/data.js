@@ -170,13 +170,44 @@
     },
     larva: {
       name: "颤蚓幼虫", cost: null, type: "诅咒", faction: null, rarity: "诅咒", unplayable: true,
-      text: () => "抽到时，你选一个空卡槽把它放进去，一直占着。这个卡槽被打爆时，它从卡组里永久删掉。"
+      text: () => "抽到时，你选一个空卡槽把它放进去，一直占着；不算抽的牌，再补抽一张。这个卡槽被打爆时，它从卡组里永久删掉。"
     },
     doom: {
       name: "厄运", cost: null, type: "诅咒", faction: null, rarity: "状态", unplayable: true,
-      text: () => "无法打出。抽到时占住正对镜中人的卡槽，回合结束后进弃牌堆。战斗结束后移除。"
+      text: () => "无法打出。抽到时随机占住一个空卡槽，不算抽的牌，再补抽一张；回合结束后进弃牌堆。战斗结束后移除。"
     }
   };
+
+  /* 术语说明。牌面上出现 match 里的字（或者牌带 flag 这个属性），就在这张牌的说明里列出来；
+     没有 match 的是敌人和卡槽身上的状态，在点开敌人、卡槽时和「术语」页里显示。 */
+  const KEYWORDS = [
+    { key: "消耗", match: /消耗/, text: "在本场战斗中移出卡组：打出后不进弃牌堆，战斗结束后回到卡组。" },
+    { key: "固有", match: /固有/, text: "对战开始时必然抽到手里。" },
+    { key: "保留", match: /保留/, text: "回合结束时不会被弃掉，留在手里。" },
+    { key: "占住卡槽", flag: "persist", text: "持续型的牌和能力牌放下后占住这个卡槽，效果结束前（能力牌是整场战斗）别的牌放不进去。卡槽被打爆，效果就没了。" },
+    { key: "无法打出", flag: "unplayable", text: "这张牌不能放进卡槽。" },
+    { key: "正对面", match: /正对面/, text: "单体牌只打它所在卡槽正对面那一列的敌人。" },
+    { key: "相邻", match: /相邻/, text: "正对面那一列左右两边的列。" },
+    { key: "所有敌人", match: /所有敌人/, text: "全体伤害：每个敌人各打一次，不管站在哪一列。打血色魅影时，每个完好的魅影卡槽各打一次。" },
+    { key: "护甲", match: /护甲/, text: "只护住它所在的卡槽：挨打时先扣护甲，再扣卡槽血量。下个回合开始时清零。" },
+    { key: "公共护盾", match: /公共护盾/, text: "任何卡槽挨打，扣完卡槽护甲以后先扣它，扣完为止。下个回合开始时清零。" },
+    { key: "寒冷", match: /寒冷/, text: "不管几层，都只让攻击 -1（最低到 1）。层数是还剩几回合，每个你的回合开始时 -1。雪葬拿层数和生命比。" },
+    { key: "被打爆的卡槽", match: /被打爆/, text: "卡槽血量被打到 0：你掉 6 血（卡槽血量上限）；之后再打这一列，伤害直接落在你身上。这场战斗里它一直坏着，战斗结束才全部修好；老旧的根付、黄金锤能修。" },
+    { key: "暗影卡槽", match: /暗影卡槽/, text: `${SHADOW_SLOT_HP} 血，被打爆不扣你的血。` },
+    { key: "冰制卡槽", match: /冰制卡槽/, text: "临时卡槽，6 血，被打爆不扣你的血；下个回合开始时融化，变回被打爆的样子。" },
+    { key: "蜂蜡卡槽", text: "芳香蜂蜡变出来的卡槽：6 血，被打爆不扣你的血，还给你回 2 血。" },
+    { key: "影卒", match: /影卒/, text: `${PAWN.atk}/${PAWN.hp}：占一个空卡槽，替这个卡槽挡伤害；每个你的回合结束时打正对面的敌人 ${PAWN.atk} 点；被打死就消失。` },
+    { key: "派系", match: /幻术牌|火焰、冰霜/, text: "牌名下面写的火焰、冰霜、暗影、幻术。流觞诗会要四种各打出一张；灵视看你这回合打没打出过幻术牌。" },
+    { key: "力量", text: "每层让攻击 +1，持续到战斗结束。" },
+    { key: "临时力量", text: "金属聚物每挨一次打 +1，它这次行动完就清空。" },
+    { key: "休眠", text: "怠惰幼兽打爆一个卡槽后休眠，不行动；挨打时苏醒，移到离它最近、正对完好卡槽的空列。" },
+    { key: "免伤一次", text: "不在场证明：这个卡槽无视下一次受到的伤害。" },
+    { key: "格挡", text: "魅影卡槽的护甲：挡在卡槽血量前面，留到它下次行动前。" },
+    { key: "淤泥", text: "软泥蛙喷进来的：这个卡槽本回合不能放牌，回合结束时清走。" },
+    { key: "打滑", text: "排气管焦油塞进你弃牌堆的状态牌：无法打出；回合结束时还在手里，所有卡槽的护甲向右移 1 格。战斗结束后移除。" },
+    { key: "厄运", text: "镜中人的镜子碎一面塞进来一张：抽到时随机占住一个空卡槽，不算抽的牌，再补抽一张；回合结束后进弃牌堆，战斗结束后移除。" },
+    { key: "颤蚓幼虫", text: "诅咒：抽到时你选一个空卡槽放进去，一直占着，不算抽的牌；这个卡槽被打爆时，它从卡组里永久删掉。" }
+  ];
 
   const ENEMIES = {
     slime: {
@@ -236,7 +267,8 @@
     encyclopedia: { name: "百科全书", rarity: "扩充", price: 4, combat: false, text: "获得 3 组卡牌奖励。" },
     hammerRelic: { name: "黄金锤", rarity: "扩充", price: 4, combat: false, text: "拾取时将一张黄金锤加入你的卡组。" },
     beeswax: { name: "芳香蜂蜡", rarity: "扩充", price: 4, combat: true, text: "一个卡槽变成蜂蜡卡槽：被打爆不扣血，还给你回 2 血。" },
-    ring: { name: "逐梦者之戒", rarity: "事件", combat: true, armor: 25, text: "有 25 点护甲，你的卡槽要挨打时先由它抵挡，扣完失效。" },
+    ring: { name: "逐梦者之戒", rarity: "事件", combat: true, armor: 25, text: "有 25 点护甲，你的卡槽要挨打时先由它抵挡，扣完失效。",
+      flavor: "“来自香橼中学的xx，你拥有战胜恐惧，实现梦想的潜力，欢迎加入逐梦军团”" },
     yukiOnna: { name: "《雪女》", rarity: "事件", combat: true, text: "战斗开始时，给所有敌人 1 层寒冷。" }
   };
 
@@ -280,15 +312,16 @@
   };
 
   // 地图：一共 12 层，第 1 层固定打小怪，第 11 层阳台，第 12 层 Boss，中间固定一层奖励（宝箱）；
-  // 其余每层 3 个选项任选一个。没定的数都放在这里，开局页可以改（待确认）
+  // 其余每层 2 个、3 个选项交替，任选一个。没定的数都放在这里，开局页可以改（待确认）
   const RUN = {
     floors: 12,                                                  // 一共几层（含 Boss）
     rewardFloor: 6,                                              // 固定出奖励（宝箱）的那一层
-    weights: { event: 25, elite: 12, rest: 10, shop: 8 },        // 随机层除了 1 个战斗，另外 2 个选项的比例
+    optionPattern: "alternate",                                  // 随机层的选项数：alternate 2、3 交替；three 都是 3 个
+    weights: { event: 25, elite: 12, rest: 10, shop: 8 },        // 随机层除了 1 个战斗，其余选项的比例
     noStreak: true,                                              // 不扎堆：同一类不连着出现 3 层，只有 1–2 个的不挨着
     startGold: 3, goldBattle: 1, goldElite: 5, goldBoss: 0,      // 问卷 B6-05
     restHeal: 9,                                                 // 阳台回血量，问卷里还没定
-    rarePct: 8, eliteRarePct: 20,                                // 卡牌奖励里出现梦想卡的概率（%）
+    rarePct: 10, eliteRarePct: 20,                               // 每组卡牌奖励带 1 张梦想卡的概率（%）
     shopCards: 5, shopRelics: 3, cardPrice: 2                    // 卡牌 2 金币一张（问卷 B6-06）
   };
 
@@ -315,6 +348,7 @@
       text: "你在一个死胡同的墙壁上看见了一扇银色的金属电梯门，旁边的按钮闪着微光。但你清楚，凡派尔商务大厦根本就没有电梯。",
       options: [
         { label: "进入电梯", effect: "失去2点生命/无事发生/删去2张牌，随机获得2张牌，前往一个新的停车场",
+          detail: "三种结果各 1/3。「前往一个新的停车场」：上面还没走到的层全部重新随机（宝箱、阳台、Boss 这些固定层不变），然后从下一层接着往上走。",
           outcomes: [
             { fx: [{ hp: -2 }], note: "失去生命是因为剧烈的上下晃动摔的" },
             { fx: [] },
@@ -362,7 +396,7 @@
   ];
 
   QW.data = {
-    CONFIG, BROKEN_SLOT_RULES, SHADOW_SLOT_HP, PAWN, FACTIONS, CARDS, ENEMIES, RELICS,
+    CONFIG, BROKEN_SLOT_RULES, SHADOW_SLOT_HP, PAWN, FACTIONS, CARDS, KEYWORDS, ENEMIES, RELICS,
     STARTER_DECK, SUMMON_POOL, WEAK, STRONG, PRESETS, randomEncounter,
     NODE_TYPES, RUN, RELIC_POOL, EVENTS, SURVEY
   };

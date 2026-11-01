@@ -28,7 +28,7 @@
       deck: clone(D.STARTER_DECK), relics: {}, waxSlot: 2,
       config: clone(D.CONFIG), god: { lockHp: false, infiniteEnergy: false },
       overrides: { enemies: {}, cards: {} }, seed: randomSeed(),
-      run: clone(D.RUN), runV: 2, runSeed: randomSeed(), tester: ""
+      run: clone(D.RUN), runV: 3, runSeed: randomSeed(), tester: ""
     };
   }
 
@@ -84,11 +84,14 @@
       if (s.overrides) d.overrides = sanitizeOverrides(s.overrides);
       if (s.seed) d.seed = String(s.seed).slice(0, 24);
       if (s.runSeed) d.runSeed = String(s.runSeed).slice(0, 24);
-      if (s.run && s.runV === 2) {  // 旧版地图的设置（10 层、按路线走）不再沿用
+      // 旧版地图的设置（10 层、按路线走）不再沿用；v2 的梦想卡出现率是「每张牌」的概率，现在改成「每组」，旧值不沿用
+      if (s.run && (s.runV === 2 || s.runV === 3)) {
         for (const [k, r] of Object.entries(RUN_RANGE)) {
+          if (s.runV === 2 && (k === "rarePct" || k === "eliteRarePct")) continue;
           const v = Number(s.run[k]);
           if (Number.isFinite(v)) d.run[k] = clamp(Math.round(v), r[0], r[1]);
         }
+        if (s.run.optionPattern === "alternate" || s.run.optionPattern === "three") d.run.optionPattern = s.run.optionPattern;
         if (s.run.weights) for (const k of Object.keys(D.RUN.weights)) {
           const v = Number(s.run.weights[k]);
           if (Number.isFinite(v)) d.run.weights[k] = clamp(Math.round(v), 0, 100);
@@ -185,6 +188,28 @@
   function cardLabel(c) { return D.CARDS[c.id].name + (c.up ? "+" : ""); }
   function cardText(c) { return D.CARDS[c.id].text(cardParams(c.id, c.up), c.up); }
 
+  /* ---------- 术语 ---------- */
+  const KW = {};
+  for (const k of D.KEYWORDS) KW[k.key] = k;
+  /* 一张牌上出现的术语。text 不给就按战斗外的数值算（战斗里传 c.cardText 的结果）。 */
+  function keywordsOf(c, text) {
+    const d = D.CARDS[c.id];
+    const t = text == null ? cardText(c) : text;
+    return D.KEYWORDS.filter(k => (k.flag && d[k.flag]) || (k.match && k.match.test(t)));
+  }
+  function glossaryItems(list) {
+    const seen = new Map();
+    for (const k of list) if (k && !seen.has(k.key)) seen.set(k.key, k);
+    return Array.from(seen.values());
+  }
+  /* 几张牌合起来的术语说明；没有术语就返回空字符串。 */
+  function glossaryHtml(cards, title) {
+    const items = glossaryItems([].concat(...cards.map(c => keywordsOf(c))));
+    if (!items.length) return "";
+    return `<div class="glossary"><h3 class="sub">${esc(title || "牌上的术语")}</h3><dl>${items.map(k =>
+      `<div><dt>${esc(k.key)}</dt><dd>${esc(k.text)}</dd></div>`).join("")}</dl></div>`;
+  }
+
   /* 一张停车票样子的牌。o.attrs：额外属性；o.extra：牌底下附加的 HTML；o.tag：用 div 还是 button。 */
   function ticket(c, o) {
     const opt = o || {};
@@ -203,7 +228,7 @@
   document.addEventListener("click", ev => {
     const b = ev.target.closest(".top [data-act]");
     if (b && topHandler) topHandler(b.dataset.act);
-    if (!ev.target.closest("[data-tip], [data-rtip], #tip")) hideTip();
+    if (!ev.target.closest("[data-tip], [data-rtip], [data-info], [data-slot], #tip")) hideTip();
   });
   document.addEventListener("keydown", ev => { if (ev.key === "Escape") hideTip(); });
   window.addEventListener("resize", hideTip);
@@ -211,6 +236,6 @@
   QW.ui = {
     $, esc, clamp, clone, reduceMotion, TYPE_CLASS, CONFIG_RANGE, RUN_RANGE, S,
     randomSeed, defaults, validEnc, loadSettings, saveSettings, setTop, flash, hideFlash, openModal, closeModal, showTip, hideTip,
-    cardParams, cardCost, cardLabel, cardText, ticket
+    cardParams, cardCost, cardLabel, cardText, ticket, KW, keywordsOf, glossaryItems, glossaryHtml
   };
 })();

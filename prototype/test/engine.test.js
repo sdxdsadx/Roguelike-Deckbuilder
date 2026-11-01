@@ -227,6 +227,44 @@ test("同一个种子、同样的操作，结果完全一样", () => {
   assert.notEqual(script(7), script(8));
 });
 
+test("厄运：随机占一个空卡槽，不固定在镜中人对面", () => {
+  const spots = new Set();
+  let facing = 0;
+  for (let k = 0; k < 60; k++) {
+    const c = new Combat({ seed: "doom" + k, encounter: { kind: "mirror" } }).start();
+    c.hand = [];
+    c.drawPile = [c.makeCard("doom")];
+    c.drawCards(1);
+    const s = c.slots.find(x => x.occ && x.occ.kind === "doom");
+    assert.ok(s, "厄运占住了一个卡槽");
+    spots.add(s.i);
+    if (s.i === c.mirror.pos) facing++;
+  }
+  assert.ok(spots.size >= 4, "厄运会落在不同的卡槽");
+  assert.ok(facing < 30, "不是每次都在镜中人对面");
+});
+
+test("抽到厄运和颤蚓幼虫不算抽的牌：每回合照样抽满 5 张", () => {
+  const c = fight(lanes("slime"));
+  const fromTop = ["doom", "strike", "doom", "larva", "strike", "parry", "strike", "parry", "strike"];
+  c.drawPile = fromTop.slice().reverse().map(id => c.makeCard(id));  // 抽牌堆的最后一张是牌库顶
+  c.discardPile = [];
+  c.drawCards(5);
+  assert.equal(c.hand.length, 5, "手里有 5 张能看的牌");
+  assert.ok(c.hand.every(x => x.id !== "doom" && x.id !== "larva"));
+  assert.equal(c.slots.filter(s => s.occ && s.occ.kind === "doom").length, 2);
+  assert.equal(c.pending && c.pending.type, "larva");
+});
+
+test("整副牌只剩厄运时，抽牌会停下来，不会一直抽", () => {
+  const c = fight(lanes("slime"));
+  c.drawPile = Array.from({ length: 8 }, () => c.makeCard("doom"));
+  c.discardPile = [];
+  c.drawCards(5);
+  assert.equal(c.hand.length, 0);
+  assert.equal(c.slots.filter(s => s.occ && s.occ.kind === "doom").length, 5, "5 个空卡槽都被占住");
+});
+
 test("颤蚓幼虫：所在卡槽被打爆时，从卡组里永久删掉", () => {
   const c = fight(lanes(null, null, "tar"));
   c.debugAddCard("larva");
