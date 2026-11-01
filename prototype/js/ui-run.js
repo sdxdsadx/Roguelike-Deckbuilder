@@ -272,21 +272,33 @@
     return html + "</section>";
   }
 
+  /* 商店：买不起的、手头还有事没处理完时，按钮直接灰掉，写明为什么，不用点了再弹提示。 */
   function shopScreen(run) {
     const sh = run.screen.shop;
     const price = R.removalPrice(run);
-    const cards = sh.cards.map((c, i) => U.ticket(c, {
-      attrs: `data-ract="buy-card" data-i="${i}"${c.sold ? " disabled" : ""}`,
-      cls: c.sold ? ["sold"] : [],
-      label: `${U.cardLabel(c)}，${c.sold ? "已买" : `${c.price} 金币`}，${U.cardText(c)}`,
-      extra: `<span class="price${!c.sold && run.gold < c.price ? " poor" : ""}">${c.sold ? "已买" : `${c.price} 金币`}</span>`
-    })).join("");
-    const relics = sh.relics.map((r, i) => `<button type="button" class="relic-item" data-ract="buy-relic" data-i="${i}"${r.sold ? " disabled" : ""}>`
-      + `<b>${esc(D.RELICS[r.id].name)}</b><span>${esc(D.RELICS[r.id].text)}</span><span class="price">${r.sold ? "已买" : `${r.price} 金币`}</span></button>`).join("");
+    const busy = !!R.currentStep(run);
+    const why = (sold, cost) => (sold ? "已买" : busy ? "先处理完下面的事" : run.gold < cost ? `${cost} 金币，不够` : `${cost} 金币`);
+    const cards = sh.cards.map((c, i) => {
+      const off = c.sold || busy || run.gold < c.price;
+      return U.ticket(c, {
+        attrs: `data-ract="buy-card" data-i="${i}"${off ? " disabled" : ""}`,
+        cls: c.sold ? ["sold"] : off ? ["cant"] : [],
+        label: `${U.cardLabel(c)}，${why(c.sold, c.price)}，${U.cardText(c)}`,
+        extra: `<span class="price${!c.sold && run.gold < c.price ? " poor" : ""}">${why(c.sold, c.price)}</span>`
+      });
+    }).join("");
+    const relics = sh.relics.map((r, i) => {
+      const off = r.sold || busy || run.gold < r.price || !!run.relics[r.id];
+      return `<button type="button" class="relic-item${!r.sold && off ? " cant" : ""}" data-ract="buy-relic" data-i="${i}"${off ? " disabled" : ""}>`
+        + `<b>${esc(D.RELICS[r.id].name)}</b><span>${esc(D.RELICS[r.id].text)}</span><span class="price${!r.sold && run.gold < r.price ? " poor" : ""}">${why(r.sold, r.price)}</span></button>`;
+    }).join("");
+    const removeOff = sh.removeUsed || busy || run.gold < price || !run.deck.length;
+    const removeText = sh.removeUsed ? "这个商店已经删过一次牌了" : !run.deck.length ? "卡组是空的"
+      : busy ? `花 ${price} 金币删一张牌（先处理完下面的事）` : run.gold < price ? `删一张牌要 ${price} 金币，不够` : `花 ${price} 金币删一张牌`;
     return `<section class="box shop" aria-labelledby="h-shop"><div class="box-head"><h2 id="h-shop">商店</h2><span class="hint">你有 ${run.gold} 金币</span></div>`
       + `<h3 class="sub">卡牌</h3><div class="hand shop-row">${cards || '<span class="note">没有卡牌卖</span>'}</div>${U.glossaryHtml(sh.cards)}`
       + `<h3 class="sub">奇物</h3><div class="relic-shop">${relics || '<span class="note">没有奇物卖</span>'}</div>`
-      + `<h3 class="sub">删牌</h3><div class="actions-row"><button type="button" class="btn" data-ract="buy-removal"${sh.removeUsed ? " disabled" : ""}>${sh.removeUsed ? "这个商店已经删过一次牌了" : `花 ${price} 金币删一张牌`}</button></div>`
+      + `<h3 class="sub">删牌</h3><div class="actions-row"><button type="button" class="btn" data-ract="buy-removal"${removeOff ? " disabled" : ""}>${removeText}</button></div>`
       + notesHtml(run.screen.notes) + stepHtml(run) + continueBtn(run, "离开商店") + "</section>";
   }
 
@@ -297,7 +309,9 @@
     if (!sc.done) {
       html += '<div class="choices">'
         + `<button type="button" class="choice" data-ract="rest-heal"><b>回血</b><span>回复 ${run.cfg.restHeal} 点生命（${run.hp} → ${healTo}）</span></button>`
-        + '<button type="button" class="choice" data-ract="rest-upgrade"><b>升级一张牌</b><span>从卡组里挑一张升级</span></button></div>';
+        + (run.deck.some(R.canUpgrade)
+          ? '<button type="button" class="choice" data-ract="rest-upgrade"><b>升级一张牌</b><span>从卡组里挑一张升级</span></button></div>'
+          : '<button type="button" class="choice" data-ract="rest-upgrade" disabled><b>升级一张牌</b><span>卡组里没有能升级的牌了</span></button></div>');
     }
     return html + notesHtml(sc.notes) + stepHtml(run) + (sc.done ? continueBtn(run) : "") + "</section>";
   }

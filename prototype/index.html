@@ -132,8 +132,8 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 
 /* ---------- 战斗页 ---------- */
 .combat {
-  display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: minmax(0, 1fr) auto auto;
-  grid-template-areas: "board side" "hud side" "hand side";
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "board info" "board side" "hud side" "hand side";
   height: calc(100% - 52px); min-height: 560px;
 }
 .board {
@@ -249,9 +249,36 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 .drawer-btn { display: none; }
 
 .hand-area { grid-area: hand; background: var(--wall); padding: 12px 16px 14px; display: grid; gap: 8px; min-width: 0; }
-.banner { background: #3A3520; border: 1px solid var(--paint); color: var(--paint); border-radius: 6px; padding: 6px 10px; font-size: 14px; }
-.revealed { display: grid; gap: 6px; }
-.revealed .label, .hand-label { font-size: 13px; color: var(--dim); }
+/* 说明栏：位置和大小固定，内容随着选中的牌、鼠标停在哪儿变 */
+.pick-info {
+  grid-area: info; background: var(--panel); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  padding: 10px 14px; display: grid; gap: 6px; align-content: start; height: clamp(170px, 30vh, 250px); overflow-y: auto; font-size: 13px; line-height: 1.55;
+}
+.pick-info p { margin: 0; }
+.pi-live { display: grid; gap: 2px; }
+.pi-now { color: var(--dim); }
+.pick-info.urgent .pi-now { color: var(--paint); font-weight: 700; }
+.pi-msg { color: #F08A80; }
+.pi-msg:empty, .pi-kwline:empty { display: none; }
+.pi-kwline { display: none; }
+.pi-detail { display: grid; gap: 4px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.pi-detail:empty { display: none; }
+.pi-detail h3 { font-family: var(--font-title); font-size: 15px; display: flex; align-items: baseline; gap: 8px; }
+.pi-cost { font-family: var(--font-num); font-size: 15px; color: var(--paint); font-weight: 600; }
+.pi-tags { color: var(--dim); font-size: 12px; }
+.pi-ok { color: #9FD7A1; }
+.pi-no { color: #F08A80; }
+.pi-kw { margin: 0; display: grid; gap: 3px; }
+.pi-kw > div { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 8px; }
+.pi-kw dt { color: var(--paint); font-weight: 700; }
+.pi-kw dd { margin: 0; color: #D6DAD1; }
+.pi-detail .flavor { color: var(--dim); }
+.rev-group { flex: none; display: flex; gap: 10px; align-items: flex-start; padding: 0 12px 0 0; margin-right: 2px; border-right: 2px dashed var(--paint); position: relative; }
+.card.from-reveal::after {
+  content: "灵视 · 本回合能打"; position: absolute; top: -10px; right: -4px; font-size: 11px; font-weight: 700; white-space: nowrap;
+  background: var(--paint); color: var(--ink); border-radius: 4px; padding: 0 5px; box-shadow: 0 1px 3px #0006;
+}
+.hand-label { font-size: 13px; color: var(--dim); }
 .hand { display: flex; gap: 10px; overflow-x: auto; padding: 16px 4px 6px 10px; min-height: 196px; }
 .foe .note-line { font-size: 12px; color: var(--sludge); }
 .hand.small { min-height: 0; }
@@ -393,7 +420,8 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 .event-text { font-family: var(--font-title); font-size: 16px; line-height: 1.9; max-width: 38em; display: grid; gap: 8px; font-weight: 600; }
 .choices { display: grid; gap: 10px; }
 .choice { text-align: left; display: grid; gap: 2px; background: var(--floor-deep); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
-.choice:hover { border-color: var(--paint); }
+.choice:hover:not(:disabled) { border-color: var(--paint); }
+.choice:disabled { opacity: .55; cursor: default; }
 .choice b { font-family: var(--font-title); font-weight: 900; font-size: 16px; }
 .choice span { color: var(--dim); font-size: 14px; }
 .outcome { display: grid; gap: 6px; }
@@ -406,6 +434,9 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 .deck-grid { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 16px; }
 .card.small { width: 122px; min-height: 152px; }
 .card.sold { opacity: .45; }
+.card.cant { opacity: .7; }
+.card.cant:hover { transform: none; }
+.btn:disabled { opacity: .55; cursor: default; }
 .card:disabled { cursor: default; }
 .card .price { align-self: flex-start; font-family: var(--font-num); font-weight: 700; font-size: 15px; background: var(--paint); color: var(--ink); border-radius: 4px; padding: 0 6px; }
 .card .price.poor { background: #E3A59D; }
@@ -454,10 +485,6 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 .glossary dd { margin: 0; color: var(--dim); }
 .result .glossary dd { font-family: var(--font-body); font-size: 13px; text-align: left; }
 .result .glossary dl { grid-template-columns: minmax(0, 1fr); }
-.banner .kw-line { margin: 6px 0 0; display: grid; gap: 2px; color: var(--light); font-size: 13px; }
-.banner .kw-line > div { display: flex; gap: 6px; }
-.banner .kw-line dt { color: var(--paint); font-weight: 700; white-space: nowrap; }
-.banner .kw-line dd { margin: 0; color: #D6DAD1; }
 .tip-status { margin: 6px 0 0; padding-left: 1.1em; display: grid; gap: 4px; }
 .tip-status b { color: var(--paint); }
 .choice small { color: var(--dim); font-size: 12.5px; line-height: 1.55; }
@@ -581,6 +608,13 @@ table.rate td.na { color: var(--dim); }
     box-shadow: 0 -12px 30px #000A; border-radius: 12px 12px 0 0; display: none;
   }
   .side.open { display: grid; }
+  /* 手机上：手牌上面一条两行高的说明，一直在，不弹出来也不推开手牌；详细说明点敌人、卡槽或者看「术语」页 */
+  .pick-info { height: 3.9em; padding: 4px 12px; gap: 0; overflow: hidden; border: 0; border-top: 1px solid var(--line); background: var(--wall); align-content: center; }
+  .pick-info .pi-detail { display: none; }
+  .pi-now, .pi-msg, .pi-kwline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pick-info .pi-kwline { display: block; color: #D6DAD1; }
+  .pick-info.has-msg .pi-kwline { display: none; }
+  .pick-info .pi-kwline:empty { display: none; }
   .drawer-btn { display: inline-block; }
   .tabs .drawer-close { display: block; }
 }
@@ -641,6 +675,7 @@ table.rate td.na { color: var(--dim); }
 <main id="combat" class="combat" hidden>
   <section class="board" id="board" aria-label="战场"></section>
   <section class="hud" id="hud" aria-label="你的状态"></section>
+  <section class="pick-info" id="pick-info" aria-label="说明"></section>
   <section class="hand-area" id="hand-area" aria-label="手牌"></section>
   <aside class="side" id="side" aria-label="日志和调试">
     <div class="tabs" role="tablist">
