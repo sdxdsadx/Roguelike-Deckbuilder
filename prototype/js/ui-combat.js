@@ -146,7 +146,7 @@
     html += '<div class="drive" aria-hidden="true"><span>行车道</span></div>';
     html += `<div class="row slot-row">${c.slots.map(s => slotHtml(c, s, choosing, valid, reasons, inc)).join("")}</div>`;
     html += c.player.shield ? `<div class="shield">公共护盾 <span class="num">${c.player.shield}</span></div>` : "<div></div>";
-    html += '<div class="legend"><span>甲：护甲</span><span>寒：寒冷</span><span>力：力量</span><span>点敌人看说明</span></div>';
+    html += '<div class="legend"><span>甲：护甲</span><span>寒：寒冷</span><span>力：力量</span><span>点敌人或卡槽看说明，术语都在「术语」页</span></div>';
     $("#board").innerHTML = html;
   }
 
@@ -194,7 +194,9 @@
     if (!playable) cls.push("dim");
     const tags = `<i>${esc(d.type)}</i>${d.faction ? `<i>${esc(d.faction)}</i>` : ""}`;
     const label = `${c.cardName(card)}，${cost == null ? "无法打出" : `${cost} 费`}，${c.cardText(card)}${locked ? "，被红视-2000 封住" : ""}`;
-    return `<button type="button" class="${cls.join(" ")}" data-card="${card.uid}" aria-pressed="${V.selected === card.uid}" aria-label="${esc(label)}">`
+    const kws = U.keywordsOf(card, c.cardText(card));
+    const title = kws.length ? ` title="${esc(kws.map(k => `${k.key}：${k.text}`).join("\n"))}"` : "";
+    return `<button type="button" class="${cls.join(" ")}" data-card="${card.uid}" aria-pressed="${V.selected === card.uid}" aria-label="${esc(label)}"${title}>`
       + (cost != null ? `<span class="cost${poor ? " poor" : ""}">${cost}</span>` : "")
       + `<span class="cname">${esc(c.cardName(card))}</span><span class="ctags">${tags}</span><span class="ctext">${esc(c.cardText(card))}</span>`
       + (locked ? '<span class="stamp">被红视-2000 封住</span>' : "")
@@ -207,7 +209,12 @@
     if (c.pending) html += '<div class="banner">抽到了颤蚓幼虫：点一个亮起来的空卡槽，把它放进去。</div>';
     else if (V.selected != null) {
       const loc = c.locate(V.selected);
-      if (loc) html += `<div class="banner">把「${esc(c.cardName(loc.card))}」放进一个亮起来的卡槽；再点一次这张牌就取消。</div>`;
+      if (loc) {
+        const kws = U.keywordsOf(loc.card, c.cardText(loc.card));
+        html += `<div class="banner">把「${esc(c.cardName(loc.card))}」放进一个亮起来的卡槽；再点一次这张牌就取消。`
+          + (kws.length ? `<dl class="kw-line">${kws.map(k => `<div><dt>${esc(k.key)}</dt><dd>${esc(k.text)}</dd></div>`).join("")}</dl>` : "")
+          + "</div>";
+      }
     }
     const rev = c.drawPile.filter(x => c.revealed.includes(x.uid));
     if (rev.length) html += `<div class="revealed"><span class="label">灵视展示的牌，本回合可以直接打出</span><div class="hand small">${rev.map(x => cardHtml(c, x, false)).join("")}</div></div>`;
@@ -304,8 +311,19 @@
     return null;
   }
 
+  /* 你自己掉血：屏幕四周闪一下红光。 */
+  function hurtFlash() {
+    document.querySelectorAll(".hurt-flash").forEach(f => f.remove());
+    const f = document.createElement("div");
+    f.className = "hurt-flash";
+    f.setAttribute("aria-hidden", "true");
+    document.body.appendChild(f);
+    setTimeout(() => f.remove(), reduceMotion() ? 350 : 750);
+  }
+
   function floats(before, after) {
     let k = 0;
+    if (before.p != null && after.p < before.p) hurtFlash();
     for (const key of Object.keys(after)) {
       const delta = after[key] - (before[key] == null ? after[key] : before[key]);
       if (!delta) continue;
@@ -313,7 +331,7 @@
       if (!el) continue;
       const r = el.getBoundingClientRect();
       const f = document.createElement("div");
-      f.className = "float " + (delta < 0 ? "down" : "up");
+      f.className = "float " + (delta < 0 ? "down" : "up") + (key === "p" ? " big" : "");
       f.textContent = (delta > 0 ? "+" : "") + delta;
       f.style.left = (r.left + r.width / 2) + "px";
       f.style.top = (r.top + 6) + "px";
@@ -375,7 +393,21 @@
     return rows;
   }
 
-  /* ---------- 说明浮窗 ---------- */
+  /* ---------- 说明浮窗 ----------
+     items：[术语名, 层数或 null]，跟着术语说明一起列出来。 */
+  function statusList(items) {
+    const rows = items.filter(Boolean).map(([name, value]) => {
+      const k = U.KW[name];
+      return `<li><b>${esc(name)}${value != null ? ` ${value}` : ""}</b>${k ? `：${esc(k.text)}` : ""}</li>`;
+    });
+    return rows.length ? `<ul class="tip-status">${rows.join("")}</ul>` : "";
+  }
+
+  /* 敌人规则里提到的术语（打滑、淤泥、厄运……），去掉已经作为状态列出来的。 */
+  function ruleTerms(rule, shown) {
+    return D.KEYWORDS.filter(k => rule.includes(k.key) && !shown.includes(k.key)).map(k => [k.key, null]);
+  }
+
   function showFoeTip(el) {
     const c = V.c;
     let html = "";
@@ -384,17 +416,51 @@
       if (!e) return;
       const d = D.ENEMIES[e.id];
       const it = c.intentOf(e);
-      html = `<h3>${esc(e.name)}（${esc(e.tier)}）</h3><p>攻击 ${e.atk}${e.str ? `，力量 ${e.str}` : ""}${e.tempStr ? `，临时力量 ${e.tempStr}` : ""}，生命 ${e.hp}/${e.maxHp}</p>`
-        + `<p>${esc(d.rule)}</p>` + (it && it.detail ? `<p>${esc(it.detail)}</p>` : "") + (d.flavor ? `<p class="flavor">${esc(d.flavor)}</p>` : "");
+      const status = [e.cold > 0 && ["寒冷", e.cold], e.str > 0 && ["力量", e.str], e.tempStr > 0 && ["临时力量", e.tempStr], e.asleep && ["休眠", null]].filter(Boolean);
+      html = `<h3>${esc(e.name)}（${esc(e.tier)}）</h3><p>攻击 ${e.atk}，生命 ${e.hp}/${e.maxHp}</p>`
+        + `<p>${esc(d.rule)}</p>` + (it && it.detail ? `<p>${esc(it.detail)}</p>` : "")
+        + statusList(status.concat(ruleTerms(d.rule, status.map(x => x[0])))) + (d.flavor ? `<p class="flavor">${esc(d.flavor)}</p>` : "");
     } else if (el.dataset.tip === "bslot") {
       const s = c.boss.slots[Number(el.dataset.lane)];
-      html = `<h3>魅影卡槽 ${s.i + 1}</h3><p>${s.destroyed ? "已打爆。打这一列的伤害直接落在本体上。" : `${s.hp}/${s.maxHp} 血，护甲 ${s.armor}，寒冷 ${s.cold}。`}</p>`
-        + `<p>${esc(D.ENEMIES.phantom.rule)}</p><p>魅影抽牌堆 ${c.boss.draw.length} 张，弃牌堆 ${c.boss.discard.length} 张。</p>`;
+      html = `<h3>魅影卡槽 ${s.i + 1}</h3><p>${s.destroyed ? "已打爆。打这一列的伤害直接落在本体上。" : `${s.hp}/${s.maxHp} 血。`}</p>`
+        + `<p>${esc(D.ENEMIES.phantom.rule)}</p><p>魅影抽牌堆 ${c.boss.draw.length} 张，弃牌堆 ${c.boss.discard.length} 张。</p>`
+        + statusList([!s.destroyed && s.armor > 0 && ["格挡", s.armor], !s.destroyed && s.cold > 0 && ["寒冷", s.cold], c.boss.body.cold > 0 && ["寒冷", c.boss.body.cold]]);
     } else {
       const m = c.mirror.mirrors[Number(el.dataset.lane)];
-      html = `<h3>第 ${m.i + 1} 面镜子</h3><p>${m.broken ? "已经碎了。" : `${m.hp}/${m.maxHp} 血，寒冷 ${m.cold}。`}</p><p>${esc(D.ENEMIES.mirror.rule)}</p>`;
+      html = `<h3>第 ${m.i + 1} 面镜子</h3><p>${m.broken ? "已经碎了。" : `${m.hp}/${m.maxHp} 血。`}</p><p>${esc(D.ENEMIES.mirror.rule)}</p>`
+        + statusList([!m.broken && m.cold > 0 && ["寒冷", m.cold], ["厄运", null]]);
     }
     U.showTip(html, el);
+  }
+
+  /* 点你自己的卡槽：卡槽的种类、血量，以及上面的护甲、占住它的东西是什么意思。 */
+  function showSlotTip(el) {
+    const c = V.c;
+    const s = c.slots[Number(el.dataset.slot)];
+    const kind = s.destroyed ? "被打爆的卡槽" : ({ shadow: "暗影卡槽", ice: "冰制卡槽", wax: "蜂蜡卡槽" }[s.kind] || "普通卡槽");
+    const occName = s.occ ? { card: "占住卡槽", pawn: "影卒", larva: "颤蚓幼虫", doom: "厄运", sludge: "淤泥" }[s.occ.kind] : null;
+    const items = [
+      (s.destroyed || s.kind !== "normal") && [kind, null],
+      s.armor > 0 && ["护甲", s.armor],
+      s.alibi && ["免伤一次", null],
+      c.player.shield > 0 && ["公共护盾", c.player.shield],
+      occName && [occName, null]
+    ];
+    let html = `<h3>第 ${s.i + 1} 槽：${esc(kind)}</h3><p>${s.destroyed ? "已经被打爆了，再挨打就直接扣你的血。" : `${s.hp}/${s.maxHp} 血。`}</p>`;
+    if (s.occ && s.occ.kind === "card") {
+      const left = Number.isFinite(s.occ.turnsLeft) ? `，还剩 ${s.occ.turnsLeft} 回合` : "，整场战斗";
+      html += `<p>被「${esc(c.cardName(s.occ.card))}」占住${left}：${esc(c.cardText(s.occ.card))}</p>`;
+    }
+    if (s.played.length) html += `<p>这回合放在这里的牌：${s.played.map(pc => `「${esc(c.cardName(pc))}」`).join("")}，回合结束进弃牌堆。</p>`;
+    U.showTip(html + statusList(items), el);
+  }
+
+  function renderTerms() {
+    const panel = $("#panel-terms");
+    if (panel.dataset.ready === "1") return;
+    panel.innerHTML = '<p class="note">牌上的字、敌人和卡槽身上的状态是什么意思。点敌人或者你的卡槽，会只列出它身上有的。</p>'
+      + `<dl class="glossary">${D.KEYWORDS.map(k => `<div><dt>${esc(k.key)}</dt><dd>${esc(k.text)}</dd></div>`).join("")}</dl>`;
+    panel.dataset.ready = "1";
   }
 
   /* ---------- 拖拽出牌 ---------- */
@@ -462,12 +528,13 @@
     if (cardEl) { U.hideTip(); select(Number(cardEl.dataset.card)); return; }
     const slotEl = ev.target.closest("[data-slot]");
     if (slotEl) {
-      U.hideTip();
       const lane = Number(slotEl.dataset.slot);
       if (c.pending) {
+        U.hideTip();
         const r = act(() => c.placeLarva(lane));
         if (!r.ok) U.flash(r.reason);
-      } else if (V.selected != null) tryPlay(V.selected, lane);
+      } else if (V.selected != null) { U.hideTip(); tryPlay(V.selected, lane); }
+      else showSlotTip(slotEl);  // 没在出牌时点卡槽：看这个卡槽的说明
       return;
     }
     const foe = ev.target.closest("[data-tip]");
@@ -510,10 +577,11 @@
 
   function setTab(tab) {
     V.tab = tab;
-    for (const name of ["log", "piles", "debug"]) {
+    for (const name of ["log", "piles", "terms", "debug"]) {
       $("#tab-" + name).setAttribute("aria-selected", String(name === tab));
       $("#panel-" + name).hidden = name !== tab;
     }
+    if (tab === "terms") renderTerms();
     if (!V.c) return;
     if (tab === "piles") renderPiles();
     if (tab === "debug") renderDebug();

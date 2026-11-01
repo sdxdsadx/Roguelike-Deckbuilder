@@ -303,17 +303,22 @@
       return true;
     }
 
+    /* 抽到颤蚓幼虫和厄运时，它们直接进卡槽、不进手牌，也不算在这次抽的张数里，再补抽一张。
+       补抽有上限（所有牌堆的张数），整副牌只剩它们时也不会一直抽下去。 */
     drawCards(n) {
       let drawn = 0;
+      let extra = this.drawPile.length + this.discardPile.length;
       for (let k = 0; k < n; k++) {
         if (this.hand.length >= this.cfg.handLimit) { this.log(`手牌满了（${this.cfg.handLimit} 张），不再抽牌`); break; }
         if (!this.drawPile.length && !this.reshuffle()) break;
         const c = this.drawPile.pop();
         this.revealed = this.revealed.filter(u => u !== c.uid);
         drawn++;
+        const slotCard = c.id === "larva" || c.id === "doom";
         if (c.id === "larva") { this.larvaQueue.push(c); this.log("抽到颤蚓幼虫：选一个空卡槽把它放进去", "status"); }
         else if (c.id === "doom") this.placeDoom(c);
         else this.hand.push(c);
+        if (slotCard && extra > 0) { extra--; k--; this.log("它不算抽的牌，再补抽 1 张", "status"); }
       }
       this.nextLarva();
       return drawn;
@@ -343,12 +348,10 @@
       return ok;
     }
 
+    /* 厄运随机占住一个空卡槽（以前是固定占正对镜中人的那一格，那一列就一定挡不了，改成随机）。 */
     placeDoom(c) {
-      let s = this.mirror && this.mirror.pos != null ? this.slots[this.mirror.pos] : null;
-      if (!s || s.destroyed || s.occ) {
-        const free = this.freeIntactSlots();
-        s = free.length ? this.rng.pick(free) : null;
-      }
+      const free = this.freeIntactSlots();
+      const s = free.length ? this.rng.pick(free) : null;
       if (!s) { this.discardPile.push(c); this.log("抽到厄运，但没有空卡槽，它进了弃牌堆", "status"); return; }
       s.occ = { kind: "doom", card: c };
       this.log(`抽到厄运：它占住了第 ${s.i + 1} 槽`, "status");

@@ -15,7 +15,10 @@ const nodesOf = m => Object.values(m.nodes);
 const rowTypes = (m, f) => m.rows.find(r => r.floor === f).options.map(o => o.type);
 const RANDOM_FLOORS = [2, 3, 4, 5, 7, 8, 9, 10];
 
-test("地图：12 层；第 1 层打小怪，第 6 层宝箱，第 11 层阳台，第 12 层 Boss；其余每层 3 个不同的选项，正好 1 个战斗；第 2、3 层没有挑战", () => {
+/* 2、3 交替：第 2、4、7、9 层 2 个选项，第 3、5、8、10 层 3 个。 */
+const OPTION_COUNT = { 2: 2, 3: 3, 4: 2, 5: 3, 7: 2, 8: 3, 9: 2, 10: 3 };
+
+test("地图：12 层；第 1 层打小怪，第 6 层宝箱，第 11 层阳台，第 12 层 Boss；其余各层 2、3 个选项交替，互不重复，正好 1 个战斗；第 2、3 层没有挑战", () => {
   for (let k = 0; k < 50; k++) {
     const m = R.generateMap("seed" + k, D.RUN, "0", 1);
     assert.equal(m.rows.length, 12);
@@ -25,12 +28,19 @@ test("地图：12 层；第 1 层打小怪，第 6 层宝箱，第 11 层阳台�
     assert.deepEqual(rowTypes(m, 12), ["boss"]);
     for (const f of RANDOM_FLOORS) {
       const t = rowTypes(m, f);
-      assert.equal(t.length, 3);
-      assert.equal(new Set(t).size, 3, `第 ${f} 层有重复的选项`);
+      assert.equal(t.length, OPTION_COUNT[f], `第 ${f} 层应该有 ${OPTION_COUNT[f]} 个选项`);
+      assert.equal(new Set(t).size, t.length, `第 ${f} 层有重复的选项`);
       assert.equal(t.filter(x => x === "battle").length, 1);
     }
     for (const f of [2, 3]) assert.ok(!rowTypes(m, f).includes("elite"), "第 2、3 层不出挑战");
     assert.ok(!rowTypes(m, 10).includes("rest"), "阳台层前一层不出阳台");
+  }
+});
+
+test("选项数设成「都是 3 个」时，每个随机层 3 个选项；旧存档没有这项设置也按 3 个", () => {
+  for (const cfg of [Object.assign({}, D.RUN, { optionPattern: "three" }), Object.assign({}, D.RUN, { optionPattern: undefined })]) {
+    const m = R.generateMap("three", cfg, "0", 1);
+    for (const f of RANDOM_FLOORS) assert.equal(rowTypes(m, f).length, 3);
   }
 });
 
@@ -45,12 +55,12 @@ function longestRun(rows, t) {
   return best;
 }
 
-test("不扎堆：挑战、阳台不会连着出现 3 层，两个商店不会挨着；商店不会全挤在前两层", () => {
+test("不扎堆：挑战不会连着出现 3 层，只有 2 个的阳台和商店不会挨着；商店不会全挤在前两层", () => {
   let lateShop = 0;
   for (let k = 0; k < 300; k++) {
     const m = R.generateMap("spread" + k, D.RUN, "0", 1);
     assert.ok(longestRun(m.rows, "elite") <= 2, `种子 spread${k}：挑战连着出现了 3 层`);
-    assert.ok(longestRun(m.rows, "rest") <= 2, `种子 spread${k}：阳台连着出现了 3 层`);
+    assert.ok(longestRun(m.rows.filter(r => r.floor < 11), "rest") <= 1, `种子 spread${k}：两个阳台挨着`);
     assert.equal(longestRun(m.rows, "shop"), 1, `种子 spread${k}：两个商店挨着`);
     const shops = m.rows.filter(r => r.options.some(o => o.type === "shop")).map(r => r.floor);
     assert.equal(shops.length, 2);
@@ -59,17 +69,17 @@ test("不扎堆：挑战、阳台不会连着出现 3 层，两个商店不会�
   assert.equal(lateShop, 300, "每一局第 3 层以后都至少有一个商店");
 });
 
-test("关掉不扎堆，就可能连着出现 3 层；总数照样固定", () => {
+test("关掉不扎堆，就可能扎堆；总数照样固定", () => {
   const off = Object.assign({}, D.RUN, { noStreak: false });
   let streak = 0;
   for (let k = 0; k < 300; k++) {
     const m = R.generateMap("spread" + k, off, "0", 1);
-    if (longestRun(m.rows, "elite") >= 3 || longestRun(m.rows, "rest") >= 3) streak++;
+    if (longestRun(m.rows, "elite") >= 3 || longestRun(m.rows, "rest") >= 2 || longestRun(m.rows, "shop") >= 2) streak++;
     const got = {};
     for (const f of RANDOM_FLOORS) for (const t of rowTypes(m, f)) if (t !== "battle") got[t] = (got[t] || 0) + 1;
-    assert.deepEqual(got, { event: 7, elite: 4, rest: 3, shop: 2 });
+    assert.deepEqual(got, { event: 5, elite: 3, rest: 2, shop: 2 });
   }
-  assert.ok(streak > 0, "关掉以后至少有一张图连着出现 3 层");
+  assert.ok(streak > 0, "关掉以后至少有一张图扎堆");
 });
 
 test("不扎堆在换地图（显眼的电梯）以后也成立，并且和下面已经走过的层连起来看", () => {
@@ -85,14 +95,34 @@ test("不扎堆在换地图（显眼的电梯）以后也成立，并且和下�
 });
 
 test("假随机：每局奇遇、挑战、阳台、商店的总数是固定的", () => {
-  const want = R.quota(D.RUN.weights, 16);
-  assert.deepEqual(want, { event: 7, elite: 4, rest: 3, shop: 2 });
+  const want = R.quota(D.RUN.weights, 12);
+  assert.deepEqual(want, { event: 5, elite: 3, rest: 2, shop: 2 });
   for (let k = 0; k < 30; k++) {
     const m = R.generateMap("bag" + k, D.RUN, "0", 1);
     const got = {};
     for (const f of RANDOM_FLOORS) for (const t of rowTypes(m, f)) if (t !== "battle") got[t] = (got[t] || 0) + 1;
     assert.deepEqual(got, want);
   }
+});
+
+test("梦想卡：每组最多 1 张，默认大约 10% 的组会带；0% 不出，100% 每组正好 1 张", () => {
+  const rng = globalThis.QW.rng.create("dream");
+  const dreamIn = cards => cards.filter(c => D.CARDS[c.id].rarity === "梦想").length;
+  let sets = 0;
+  for (let k = 0; k < 5000; k++) {
+    const n = dreamIn(R.rollCards(rng, 3, D.RUN.rarePct, false));
+    assert.ok(n <= 1, "一组里最多 1 张梦想卡");
+    if (n) sets++;
+  }
+  assert.equal(D.RUN.rarePct, 10);
+  assert.ok(sets > 400 && sets < 600, `5000 组里有 ${sets} 组带梦想卡，应该在 10% 左右`);
+  for (let k = 0; k < 200; k++) {
+    assert.equal(dreamIn(R.rollCards(rng, 4, 0, false)), 0);
+    const all = R.rollCards(rng, 3, 100, false);
+    assert.equal(dreamIn(all), 1);
+    assert.equal(new Set(all.map(c => c.id)).size, 3, "同一组不重复");
+  }
+  assert.ok(R.rollCards(rng, 3, 0, true).every(c => D.CARDS[c.id].rarity === "梦想"), "Boss 奖励全是梦想卡");
 });
 
 test("同一个种子生成同一张地图；开局就能看到全部 12 层", () => {
@@ -214,7 +244,7 @@ test("奇遇「显眼的电梯」第三种结果：删 2 张、得 2 张，换�
     assert.equal(run.mapGen, 1);
     R.leave(run);
     const next = R.available(run).map(id => R.getNode(run, id));
-    assert.ok(next.length === 3 && next.every(n => n.floor === 2 && n.id.endsWith("-1")), "从新地图的下一层继续");
+    assert.ok(next.length === 2 && next.every(n => n.floor === 2 && n.id.endsWith("-1")), "从新地图的下一层继续，2、3 交替照样接得上");
     assert.equal(run.map.rows.length, 12);
     return;
   }

@@ -25,10 +25,10 @@
 
   /* ---------- 地图 ----------
      一共 floors 层：第 1 层固定打小怪，倒数第 2 层固定阳台，最后一层 Boss，rewardFloor 那一层固定是宝箱。
-     其余每层 3 个选项，可以任选一个往上走。
+     其余各层的选项数 2 个、3 个交替（cfg.optionPattern 为 "three" 时都是 3 个），可以任选一个往上走。
      「假随机」：先按比例算好整张地图上奇遇、挑战、阳台、商店各出几个，再分到各层，
      所以每局各类节点的总数是固定的，不会一局没有商店。
-     每个随机层固定有 1 个战斗选项，另外 2 个从这些名额里拿，同一层不重复；
+     每个随机层固定有 1 个战斗选项，其余的从这些名额里拿，同一层不重复；
      第 2、3 层不出挑战，阳台层前一层不出阳台。
      不扎堆（cfg.noStreak，默认开）：一类节点有 3 个以上的，不会连着出现 3 层；只有 1–2 个的（默认是商店），
      不会出现在相邻两层。数量多到躲不开的那一类不限制（默认的奇遇有 7 个，随机层只有 8 层）。 */
@@ -73,10 +73,11 @@
     return out;
   }
 
-  function assignBag(rng, counts, floors, perFloor, allowed, checks) {
+  /* slotsOf(f)：第 f 层除了战斗还有几个选项。 */
+  function assignBag(rng, counts, floors, slotsOf, allowed, checks) {
     const types = Object.keys(counts).filter(k => counts[k] > 0);
     const need = types.reduce((a, t) => a + counts[t], 0);
-    if (need < floors.length * perFloor) perFloor = Math.floor(need / Math.max(1, floors.length));
+    const per = need ? slotsOf : () => 0;  // 比例全是 0：每层只有战斗
     const tries = (checks || []).map(c => [allowed, true, c]).concat([[allowed, true, null], [() => true, true, null], [() => true, false, null]]);
     for (const [ok, distinct, extra] of tries) {
       const left = Object.assign({}, counts);
@@ -85,13 +86,13 @@
       let steps = 0;
       const feasible = i => {
         const rest = order.slice(i);
-        return types.every(t => left[t] <= (distinct ? rest.filter(f => ok(f, t)).length : rest.length * perFloor));
+        return types.every(t => left[t] <= (distinct ? rest.filter(f => ok(f, t)).length : rest.reduce((a, f) => a + per(f), 0)));
       };
       const dfs = i => {
         if (i === order.length) return types.every(t => left[t] === 0);
         if (++steps > 50000) return false;
         const f = order[i];
-        for (const pick of rng.shuffle(combos(types.filter(t => left[t] > 0 && ok(f, t)), perFloor, !distinct))) {
+        for (const pick of rng.shuffle(combos(types.filter(t => left[t] > 0 && ok(f, t)), per(f), !distinct))) {
           if (!distinct && pick.some(t => pick.filter(x => x === t).length > left[t])) continue;
           if (extra && !extra(result, f, pick)) continue;
           pick.forEach(t => { left[t]--; });
@@ -136,6 +137,19 @@
     return limits;
   }
 
+  /* 每个随机层有几个选项：2、3 交替时，从第一个随机层开始按 2、3、2、3 排；
+     按整张图的随机层顺序算，换地图以后也接得上。没写 optionPattern 的旧存档都是 3 个。 */
+  function optionCounts(cfg, total, reward) {
+    const out = {};
+    let k = 0;
+    for (let f = 1; f <= total; f++) {
+      if (fixedType(f, total, reward)) continue;
+      out[f] = cfg.optionPattern === "alternate" ? (k % 2 === 0 ? 2 : 3) : OPTIONS;
+      k++;
+    }
+    return out;
+  }
+
   /* below：换地图时下面已经走过的那几层，不扎堆要连着它们一起看。 */
   function generateMap(seed, cfg, tag, fromFloor, below) {
     const rng = QW.rng.create(`${seed}:map:${tag}`);
@@ -143,8 +157,9 @@
     const from = fromFloor || 1;
     const randomFloors = [];
     for (let f = from; f <= total; f++) if (!fixedType(f, total, reward)) randomFloors.push(f);
-    const extra = OPTIONS - 1;
-    const counts = quota(cfg.weights, randomFloors.length * extra);
+    const opts = optionCounts(cfg, total, reward);
+    const slotsOf = f => opts[f] - 1;
+    const counts = quota(cfg.weights, randomFloors.reduce((a, f) => a + slotsOf(f), 0));
     const allowed = (f, t) => !(f <= 3 && t === "elite") && !(f === total - 2 && t === "rest");
     const checks = [];
     if (cfg.noStreak !== false && randomFloors.length) {
@@ -172,7 +187,7 @@
         checks.push(make(lim));
       }
     }
-    const slots = assignBag(rng, counts, randomFloors, extra, allowed, checks);
+    const slots = assignBag(rng, counts, randomFloors, slotsOf, allowed, checks);
     const rows = [];
     for (let f = from; f <= total; f++) {
       const fixed = fixedType(f, total, reward);
@@ -199,7 +214,7 @@
     const run = {
       v: 2, seed: String(opts.seed), cfg, rngCount: 0,
       hp: Math.min(conf.startHp, conf.playerHp), maxHp: conf.playerHp, gold: cfg.startGold,
-      deck: clone(D.STARTER_DECK), relics: { brokenPage: true }, waxSlot: null, netsukeUsed: false, ring: 0,
+      deck: clone(D.STARTER_DECK), relics: { brokenPage: true }, relicFrom: { brokenPage: "开局自带" }, waxSlot: null, netsukeUsed: false, ring: 0,
       removals: 0, firstReward: true, nextStrength: 0, usedEvents: [], fights: 0,
       mapGen: 0, map: null, pos: null, floor: 0, visited: [], areaSlotLost: false,
       lockHp: false, freeTravel: false,
@@ -310,7 +325,7 @@
       addGold(run, run.cfg.goldElite, got);
       run.queue.push(cardStep(run, run.cfg.eliteRarePct, "选一张牌加入卡组", false));
       const relic = randomRelic(run);
-      if (relic) gainRelic(run, relic, got);
+      if (relic) gainRelic(run, relic, got, `第 ${run.floor} 层挑战奖励`);
     } else {
       run.stats.bosses++;
       addGold(run, run.cfg.goldBoss, got);
@@ -330,16 +345,23 @@
     if (lines) lines.push(`金币 +${n}`);
   }
 
+  /* 一组牌（卡牌奖励、商店、奇遇随机得牌）：每组最多 1 张梦想卡，带不带看 rarePct（%）；
+     dreamOnly 时全是梦想卡（Boss 奖励）。同一组不重复。 */
   function rollCards(rng, n, rarePct, dreamOnly) {
     const common = Object.keys(D.CARDS).filter(id => D.CARDS[id].rarity === "扩充");
     const rare = Object.keys(D.CARDS).filter(id => D.CARDS[id].rarity === "梦想");
-    const out = [];
-    for (let guard = 0; out.length < n && guard < 200; guard++) {
-      const pool = dreamOnly || rng.int(1, 100) <= rarePct ? rare : common;
-      let avail = pool.filter(id => !out.includes(id));
-      if (!avail.length && !dreamOnly) avail = common.concat(rare).filter(id => !out.includes(id));
-      if (!avail.length) break;
-      out.push(rng.pick(avail));
+    const take = (pool, k, out) => {
+      const avail = pool.filter(id => !out.includes(id));
+      for (let i = 0; i < k && avail.length; i++) out.push(avail.splice(rng.int(0, avail.length - 1), 1)[0]);
+      return out;
+    };
+    let out = [];
+    if (dreamOnly) take(rare, n, out);
+    else {
+      if (n > 0 && rng.int(1, 100) <= rarePct) take(rare, 1, out);
+      take(common, n - out.length, out);
+      take(rare, n - out.length, out);  // 扩充牌不够时才用梦想卡补
+      out = rng.shuffle(out);
     }
     return out.map(id => ({ id, up: false }));
   }
@@ -360,9 +382,11 @@
     return pool.length ? rngFor(run, "relic").pick(pool) : null;
   }
 
-  function gainRelic(run, id, lines) {
+  /* from：从哪儿拿到的，奇物一览里显示。 */
+  function gainRelic(run, id, lines, from) {
     if (!id || run.relics[id]) return;
     run.relics[id] = true;
+    (run.relicFrom = run.relicFrom || {})[id] = from || (run.floor ? `第 ${run.floor} 层` : "开局");
     run.stats.relics.push(id);
     track(run, "relic", `获得奇物「${D.RELICS[id].name}」`, { relic: id });
     if (lines) lines.push(`奇物「${D.RELICS[id].name}」`);
@@ -513,6 +537,11 @@
     return ok;
   }
 
+  function eventSource(run) {
+    const ev = run.screen.kind === "event" ? D.EVENTS.find(e => e.id === run.screen.event) : null;
+    return ev ? `第 ${run.floor} 层奇遇「${ev.name}」` : `第 ${run.floor} 层`;
+  }
+
   function applyFx(run, fx, lines) {
     if (fx.hp) changeHp(run, fx.hp, lines);
     if (run.result) return;
@@ -527,7 +556,7 @@
     }
     if (fx.relic) {
       const id = fx.relic === "random" ? randomRelic(run) : fx.relic;
-      if (id && !run.relics[id]) gainRelic(run, id, lines);
+      if (id && !run.relics[id]) gainRelic(run, id, lines, eventSource(run));
       else lines.push("没有能拿的奇物了");
     }
     if (fx.strength) {
@@ -545,7 +574,7 @@
     const below = run.map.rows.filter(r => r.floor < from);
     const fresh = generateMap(run.seed, run.cfg, String(run.mapGen), from, below);
     run.map.rows = below.concat(fresh.rows);
-    note(run, "电梯门开了，外面是另一个停车场：上面几层的选项都变了");
+    note(run, `电梯门开了，外面是另一个停车场：第 ${from} 层以上还没走到的层都重新随机了（宝箱、阳台、Boss 不变），回地图看看`);
   }
 
   /* ---------- 商店 ---------- */
@@ -585,7 +614,7 @@
     if (!pay(run, it.price)) return no("金币不够");
     it.sold = true;
     const lines = [];
-    gainRelic(run, it.id, lines);
+    gainRelic(run, it.id, lines, `第 ${run.floor} 层商店（${it.price} 金币）`);
     note(run, `买下了${lines.join("，")}`);
     autoSteps(run);
     return ok;
@@ -631,7 +660,7 @@
     sc.opened = true;
     const lines = [];
     const id = randomRelic(run);
-    if (id) gainRelic(run, id, lines); // 拿到奇物已经记过一条
+    if (id) gainRelic(run, id, lines, `第 ${run.floor} 层宝箱`); // 拿到奇物已经记过一条
     else { addGold(run, 3, lines); track(run, "treasure", `宝箱：奇物拿光了，${lines.join("，")}`); }
     sc.lines = lines;
     autoSteps(run);
@@ -642,7 +671,7 @@
   function areaEnd(run) {
     if (!run.areaSlotLost) {
       const lines = [];
-      gainRelic(run, "ring", lines);
+      gainRelic(run, "ring", lines, "打完 Boss 时，这一层没有卡槽被打爆");
       note(run, `这一层没有卡槽被打爆，获得了${lines.join("")}`);
     }
     run.result = "win";

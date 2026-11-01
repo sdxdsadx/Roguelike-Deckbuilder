@@ -426,6 +426,51 @@ details > summary { cursor: pointer; color: var(--paint); font-size: 14px; }
 .deck-view { width: min(940px, 100%); max-height: 88vh; overflow-y: auto; text-align: left; }
 .deck-view h2 { text-align: center; }
 
+/* ---------- 地图上的 Boss、弹出来看的地图 ---------- */
+.mnode.t-boss { display: grid; place-content: center; gap: 0; line-height: 1.15; }
+.mnode .bn-tag { font-family: var(--font-num); font-size: 11px; letter-spacing: .06em; color: var(--dim); }
+.mnode .bn-name { font-size: 12px; font-weight: 700; }
+.mnode.t-boss[data-info] { cursor: help; opacity: .8; }
+.map-view { width: min(620px, 100%); max-height: 90vh; overflow-y: auto; text-align: left; }
+.map-view h2 { text-align: center; }
+.map-view .map-wrap { padding-left: 34px; }
+
+/* ---------- 奇物一览 ---------- */
+.relic-view { width: min(620px, 100%); max-height: 88vh; overflow-y: auto; text-align: left; }
+.relic-view h2 { text-align: center; }
+.relic-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.relic-list li { background: var(--floor-deep); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; }
+.rl-head { display: flex; align-items: baseline; gap: 10px; }
+.rl-head b { font-family: var(--font-title); font-weight: 900; font-size: 16px; }
+.rl-rar { font-size: 12px; color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; }
+.rl-state { color: var(--paint); font-size: 14px; }
+.relic-view .flavor { color: var(--dim); font-size: 13px; font-family: var(--font-title); }
+
+/* ---------- 术语 ---------- */
+.glossary { display: grid; gap: 6px; }
+.glossary dl, dl.glossary { margin: 0; display: grid; gap: 6px; }
+.glossary dl > div, dl.glossary > div { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 2px 10px; font-size: 13px; }
+.glossary dt { font-weight: 700; color: var(--light); }
+.glossary dd { margin: 0; color: var(--dim); }
+.result .glossary dd { font-family: var(--font-body); font-size: 13px; text-align: left; }
+.result .glossary dl { grid-template-columns: minmax(0, 1fr); }
+.banner .kw-line { margin: 6px 0 0; display: grid; gap: 2px; color: var(--light); font-size: 13px; }
+.banner .kw-line > div { display: flex; gap: 6px; }
+.banner .kw-line dt { color: var(--paint); font-weight: 700; white-space: nowrap; }
+.banner .kw-line dd { margin: 0; color: #D6DAD1; }
+.tip-status { margin: 6px 0 0; padding-left: 1.1em; display: grid; gap: 4px; }
+.tip-status b { color: var(--paint); }
+.choice small { color: var(--dim); font-size: 12.5px; line-height: 1.55; }
+.card.preview::after {
+  content: "升级后"; position: absolute; top: -10px; right: -4px; font-size: 11px; font-weight: 700;
+  background: var(--paint); color: var(--ink); border-radius: 4px; padding: 0 5px; box-shadow: 0 1px 3px #0006;
+}
+
+/* ---------- 掉血：数字和四周的红光 ---------- */
+.float.big { font-size: 34px; }
+.hurt-flash { position: fixed; inset: 0; z-index: 58; pointer-events: none; box-shadow: inset 0 0 0 3px #D0493ECC, inset 0 0 90px 28px #D0493E8C; animation: hurt .75s ease-out forwards; }
+@keyframes hurt { 0% { opacity: 0; } 18% { opacity: 1; } 100% { opacity: 0; } }
+
 /* ---------- 提示条（办好了） ---------- */
 .flash.ok { background: #1F3020; border-color: #6FAE72; color: #CFEACB; }
 
@@ -560,6 +605,7 @@ table.rate td { font-variant-numeric: tabular-nums; }
   .hand-area { padding: 10px 10px 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .hurt-flash { animation: none; opacity: .7; }
   .tube { animation: none; }
   .card { transition: none; }
   .float { animation-duration: .01s; animation-delay: .9s; }
@@ -593,11 +639,13 @@ table.rate td { font-variant-numeric: tabular-nums; }
     <div class="tabs" role="tablist">
       <button type="button" role="tab" id="tab-log" data-tab="log" aria-selected="true">战斗日志</button>
       <button type="button" role="tab" id="tab-piles" data-tab="piles" aria-selected="false">牌堆</button>
+      <button type="button" role="tab" id="tab-terms" data-tab="terms" aria-selected="false">术语</button>
       <button type="button" role="tab" id="tab-debug" data-tab="debug" aria-selected="false">调试</button>
       <button type="button" class="drawer-close" data-act="drawer">关闭</button>
     </div>
     <div class="tabpanel" id="panel-log" role="tabpanel" aria-labelledby="tab-log"><ol class="log" id="log"></ol></div>
     <div class="tabpanel" id="panel-piles" role="tabpanel" aria-labelledby="tab-piles" hidden></div>
+    <div class="tabpanel" id="panel-terms" role="tabpanel" aria-labelledby="tab-terms" hidden></div>
     <div class="tabpanel" id="panel-debug" role="tabpanel" aria-labelledby="tab-debug" hidden></div>
   </aside>
 </main>
