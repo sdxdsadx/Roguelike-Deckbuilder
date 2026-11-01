@@ -9,13 +9,18 @@
   const U = QW.ui;
   const { $, esc, clamp, reduceMotion, TYPE_CLASS } = U;
   const LANES = [0, 1, 2, 3, 4];
-  const V = { c: null, ctrl: null, selected: null, tab: "log", logShown: 0, drag: null, suppressClick: 0 };
+  const V = {
+    c: null, ctrl: null, selected: null, tab: "log", logShown: 0, drag: null, suppressClick: 0,
+    hoverKey: null, pinKey: null, msg: "", msgUntil: 0, msgTimer: null
+  };
 
   function start(c, ctrl) {
     clearFloats();
     V.c = c;
     V.ctrl = ctrl;
     V.selected = null;
+    V.hoverKey = V.pinKey = null;
+    V.msg = "";
     V.logShown = 0;
     $("#log").innerHTML = "";
     $("#panel-debug").dataset.ready = "";
@@ -56,8 +61,7 @@
   function intentHtml(it, ownLane) {
     if (!it) return "";
     const text = esc(it.text).replace(/(\d+)/, '<span class="v">$1</span>');
-    const title = it.detail ? ` title="${esc(it.detail)}"` : "";
-    return `<div class="intent ${it.type}"${title}>${text}</div>`
+    return `<div class="intent ${it.type}">${text}</div>`
       + (it.type === "attack" && it.lane != null && it.lane !== ownLane ? `<div class="aim">打第 ${it.lane + 1} 槽</div>` : "")
       + (it.note ? `<div class="note-line">${esc(it.note)}</div>` : "");
   }
@@ -123,7 +127,7 @@
     const label = `第 ${s.i + 1} 槽，${name}${s.destroyed ? "" : `，${s.hp}/${s.maxHp} 血`}${s.armor ? `，护甲 ${s.armor}` : ""}`
       + (inc[s.i] ? `，将受到 ${inc[s.i]} 点攻击` : "") + (choosing ? (valid.has(s.i) ? "，可以放这里" : `，不能放：${why}`) : "");
     return `<div class="cell">${inc[s.i] ? `<span class="incoming" aria-hidden="true">来袭 <span class="n">${inc[s.i]}</span></span>` : ""}`
-      + `<button type="button" class="${cls.join(" ")}" data-slot="${s.i}" aria-label="${esc(label)}"${why ? ` title="${esc(why)}"` : ""}>${inner}</button>`
+      + `<button type="button" class="${cls.join(" ")}" data-slot="${s.i}" aria-label="${esc(label)}">${inner}</button>`
       + `<span class="paint" aria-hidden="true">${s.i + 1}</span></div>`;
   }
 
@@ -192,11 +196,10 @@
     const cls = ["card", TYPE_CLASS[d.type]];
     if (V.selected === card.uid) cls.push("selected");
     if (!playable) cls.push("dim");
+    if (!inHand) cls.push("from-reveal");
     const tags = `<i>${esc(d.type)}</i>${d.faction ? `<i>${esc(d.faction)}</i>` : ""}`;
     const label = `${c.cardName(card)}，${cost == null ? "无法打出" : `${cost} 费`}，${c.cardText(card)}${locked ? "，被红视-2000 封住" : ""}`;
-    const kws = U.keywordsOf(card, c.cardText(card));
-    const title = kws.length ? ` title="${esc(kws.map(k => `${k.key}：${k.text}`).join("\n"))}"` : "";
-    return `<button type="button" class="${cls.join(" ")}" data-card="${card.uid}" aria-pressed="${V.selected === card.uid}" aria-label="${esc(label)}"${title}>`
+    return `<button type="button" class="${cls.join(" ")}" data-card="${card.uid}" aria-pressed="${V.selected === card.uid}" aria-label="${esc(label)}">`
       + (cost != null ? `<span class="cost${poor ? " poor" : ""}">${cost}</span>` : "")
       + `<span class="cname">${esc(c.cardName(card))}</span><span class="ctags">${tags}</span><span class="ctext">${esc(c.cardText(card))}</span>`
       + (locked ? '<span class="stamp">被红视-2000 封住</span>' : "")
@@ -206,19 +209,10 @@
   function renderHand() {
     const c = V.c;
     let html = "";
-    if (c.pending) html += '<div class="banner">抽到了颤蚓幼虫：点一个亮起来的空卡槽，把它放进去。</div>';
-    else if (V.selected != null) {
-      const loc = c.locate(V.selected);
-      if (loc) {
-        const kws = U.keywordsOf(loc.card, c.cardText(loc.card));
-        html += `<div class="banner">把「${esc(c.cardName(loc.card))}」放进一个亮起来的卡槽；再点一次这张牌就取消。`
-          + (kws.length ? `<dl class="kw-line">${kws.map(k => `<div><dt>${esc(k.key)}</dt><dd>${esc(k.text)}</dd></div>`).join("")}</dl>` : "")
-          + "</div>";
-      }
-    }
+    // 灵视展示的牌排在手牌同一行的最前面，不另起一行，免得手牌被往下挤
     const rev = c.drawPile.filter(x => c.revealed.includes(x.uid));
-    if (rev.length) html += `<div class="revealed"><span class="label">灵视展示的牌，本回合可以直接打出</span><div class="hand small">${rev.map(x => cardHtml(c, x, false)).join("")}</div></div>`;
-    html += `<div class="hand">${c.hand.map(x => cardHtml(c, x, true)).join("") || '<span class="note">没有手牌</span>'}</div>`;
+    const revHtml = rev.length ? `<div class="rev-group" role="group" aria-label="灵视展示的牌，本回合可以直接打出">${rev.map(x => cardHtml(c, x, false)).join("")}</div>` : "";
+    html += `<div class="hand">${revHtml}${c.hand.map(x => cardHtml(c, x, true)).join("") || (rev.length ? "" : '<span class="note">没有手牌</span>')}</div>`;
     $("#hand-area").innerHTML = html;
   }
 
@@ -278,6 +272,7 @@
     renderBoard();
     renderHud();
     renderHand();
+    renderInfo();
     renderLog();
     if (V.tab === "piles") renderPiles();
     if (V.tab === "debug") renderDebug();
@@ -355,7 +350,7 @@
   function tryPlay(uid, lane) {
     const c = V.c;
     const check = c.canPlay(uid, lane);
-    if (!check.ok) { U.flash(check.reason); return; }
+    if (!check.ok) { say(check.reason); return; }
     V.selected = null;
     act(() => c.play(uid, lane));
   }
@@ -363,11 +358,11 @@
   function select(uid) {
     const c = V.c;
     if (c.result) return;
-    if (c.pending) { U.flash("先把颤蚓幼虫放进卡槽"); return; }
+    if (c.pending) { say("先把颤蚓幼虫放进卡槽"); return; }
     if (V.selected === uid) { V.selected = null; render(); return; }
     const check = c.canPlay(uid, null);
-    if (!check.ok) { U.flash(check.reason); return; }
-    if (!c.validLanes(uid).length) { U.flash("没有能放这张牌的卡槽"); return; }
+    if (!check.ok) { say(check.reason); return; }
+    if (!c.validLanes(uid).length) { say("没有能放这张牌的卡槽"); return; }
     V.selected = uid;
     render();
   }
@@ -408,35 +403,57 @@
     return D.KEYWORDS.filter(k => rule.includes(k.key) && !shown.includes(k.key)).map(k => [k.key, null]);
   }
 
-  function showFoeTip(el) {
+  /* 每样能看说明的东西有一个 key：card:牌的 uid、slot:卡槽序号、enemy:敌人 uid、bslot:魅影卡槽列、mirror:镜子列。
+     说明按 key 现算，画面重画以后也对得上。 */
+  function keyOf(el) {
+    if (!el || !el.dataset) return null;
+    if (el.dataset.card) return `card:${el.dataset.card}`;
+    if (el.dataset.slot != null && el.dataset.slot !== "") return `slot:${el.dataset.slot}`;
+    if (el.dataset.tip === "enemy") return `enemy:${el.dataset.uid}`;
+    if (el.dataset.tip === "bslot") return `bslot:${el.dataset.lane}`;
+    if (el.dataset.tip === "mirror") return `mirror:${el.dataset.lane}`;
+    return null;
+  }
+
+  function foeInfo(kind, n) {
     const c = V.c;
-    let html = "";
-    if (el.dataset.tip === "enemy") {
-      const e = c.enemies.find(x => x.uid === Number(el.dataset.uid));
-      if (!e) return;
+    if (kind === "enemy") {
+      const e = c.enemies.find(x => x.uid === n);
+      if (!e) return "";
       const d = D.ENEMIES[e.id];
       const it = c.intentOf(e);
       const status = [e.cold > 0 && ["寒冷", e.cold], e.str > 0 && ["力量", e.str], e.tempStr > 0 && ["临时力量", e.tempStr], e.asleep && ["休眠", null]].filter(Boolean);
-      html = `<h3>${esc(e.name)}（${esc(e.tier)}）</h3><p>攻击 ${e.atk}，生命 ${e.hp}/${e.maxHp}</p>`
-        + `<p>${esc(d.rule)}</p>` + (it && it.detail ? `<p>${esc(it.detail)}</p>` : "")
+      return `<h3>${esc(e.name)}（${esc(e.tier)}）</h3><p>攻击 ${e.atk}，生命 ${e.hp}/${e.maxHp}${e.dead ? "，已经倒下" : ""}</p>`
+        + (it ? `<p>下一步：${esc(it.text)}${it.detail ? `（${esc(it.detail)}）` : ""}</p>` : "")
+        + `<p>${esc(d.rule)}</p>`
         + statusList(status.concat(ruleTerms(d.rule, status.map(x => x[0])))) + (d.flavor ? `<p class="flavor">${esc(d.flavor)}</p>` : "");
-    } else if (el.dataset.tip === "bslot") {
-      const s = c.boss.slots[Number(el.dataset.lane)];
-      html = `<h3>魅影卡槽 ${s.i + 1}</h3><p>${s.destroyed ? "已打爆。打这一列的伤害直接落在本体上。" : `${s.hp}/${s.maxHp} 血。`}</p>`
+    }
+    if (kind === "bslot" && c.boss) {
+      const s = c.boss.slots[n];
+      if (!s) return "";
+      const it = c.bossIntentOf(s);
+      return `<h3>魅影卡槽 ${s.i + 1}</h3><p>${s.destroyed ? "已打爆。打这一列的伤害直接落在本体上。" : `${s.hp}/${s.maxHp} 血。`}</p>`
+        + (it && !s.destroyed ? `<p>下一步：${esc(it.text)}</p>` : "")
         + `<p>${esc(D.ENEMIES.phantom.rule)}</p><p>魅影抽牌堆 ${c.boss.draw.length} 张，弃牌堆 ${c.boss.discard.length} 张。</p>`
         + statusList([!s.destroyed && s.armor > 0 && ["格挡", s.armor], !s.destroyed && s.cold > 0 && ["寒冷", s.cold], c.boss.body.cold > 0 && ["寒冷", c.boss.body.cold]]);
-    } else {
-      const m = c.mirror.mirrors[Number(el.dataset.lane)];
-      html = `<h3>第 ${m.i + 1} 面镜子</h3><p>${m.broken ? "已经碎了。" : `${m.hp}/${m.maxHp} 血。`}</p><p>${esc(D.ENEMIES.mirror.rule)}</p>`
+    }
+    if (kind === "mirror" && c.mirror) {
+      const m = c.mirror.mirrors[n];
+      if (!m) return "";
+      const here = c.mirror.pos === m.i;
+      return `<h3>第 ${m.i + 1} 面镜子${here ? "：镜中人在这里" : ""}</h3><p>${m.broken ? "已经碎了。" : `${m.hp}/${m.maxHp} 血。`}</p>`
+        + (here ? `<p>下一步：攻击 ${c.mirrorAtk()}</p>` : "")
+        + `<p>${esc(D.ENEMIES.mirror.rule)}</p>`
         + statusList([!m.broken && m.cold > 0 && ["寒冷", m.cold], ["厄运", null]]);
     }
-    U.showTip(html, el);
+    return "";
   }
 
-  /* 点你自己的卡槽：卡槽的种类、血量，以及上面的护甲、占住它的东西是什么意思。 */
-  function showSlotTip(el) {
+  /* 你自己的卡槽：种类、血量，上面的护甲、占住它的东西是什么意思；正在出牌时还说能不能放。 */
+  function slotInfo(i) {
     const c = V.c;
-    const s = c.slots[Number(el.dataset.slot)];
+    const s = c.slots[i];
+    if (!s) return "";
     const kind = s.destroyed ? "被打爆的卡槽" : ({ shadow: "暗影卡槽", ice: "冰制卡槽", wax: "蜂蜡卡槽" }[s.kind] || "普通卡槽");
     const occName = s.occ ? { card: "占住卡槽", pawn: "影卒", larva: "颤蚓幼虫", doom: "厄运", sludge: "淤泥" }[s.occ.kind] : null;
     const items = [
@@ -447,12 +464,110 @@
       occName && [occName, null]
     ];
     let html = `<h3>第 ${s.i + 1} 槽：${esc(kind)}</h3><p>${s.destroyed ? "已经被打爆了，再挨打就直接扣你的血。" : `${s.hp}/${s.maxHp} 血。`}</p>`;
+    if (V.selected != null) {
+      const r = c.canPlay(V.selected, s.i);
+      html += r.ok ? '<p class="pi-ok">可以放在这里。</p>' : `<p class="pi-no">不能放在这里：${esc(r.reason)}</p>`;
+    } else if (c.pending) {
+      html += c.freeIntactSlots().includes(s) ? '<p class="pi-ok">颤蚓幼虫可以放在这里。</p>' : '<p class="pi-no">颤蚓幼虫放不进这里。</p>';
+    }
     if (s.occ && s.occ.kind === "card") {
       const left = Number.isFinite(s.occ.turnsLeft) ? `，还剩 ${s.occ.turnsLeft} 回合` : "，整场战斗";
       html += `<p>被「${esc(c.cardName(s.occ.card))}」占住${left}：${esc(c.cardText(s.occ.card))}</p>`;
     }
     if (s.played.length) html += `<p>这回合放在这里的牌：${s.played.map(pc => `「${esc(c.cardName(pc))}」`).join("")}，回合结束进弃牌堆。</p>`;
-    U.showTip(html + statusList(items), el);
+    return html + statusList(items);
+  }
+
+  function cardInfo(uid) {
+    const c = V.c;
+    const loc = c.locate(uid);
+    if (!loc) return "";
+    const card = loc.card;
+    const d = c.def(card);
+    const cost = c.cost(card);
+    const check = c.canPlay(uid, null);
+    const kws = U.keywordsOf(card, c.cardText(card));
+    return `<h3>${esc(c.cardName(card))}<span class="pi-cost">${cost == null ? "无法打出" : `${cost} 费`}</span></h3>`
+      + `<p class="pi-tags">${esc(d.type)}${d.faction ? ` · ${esc(d.faction)}` : ""}${loc.where === "revealed" ? " · 灵视展示的牌" : ""}</p>`
+      + `<p>${esc(c.cardText(card))}</p>`
+      + (check.ok ? "" : `<p class="pi-no">现在打不出来：${esc(check.reason)}</p>`)
+      + (kws.length ? `<dl class="pi-kw">${kws.map(k => `<div><dt>${esc(k.key)}</dt><dd>${esc(k.text)}</dd></div>`).join("")}</dl>` : "");
+  }
+
+  function detailFor(key) {
+    if (!key || !V.c) return "";
+    const i = key.indexOf(":");
+    const kind = key.slice(0, i);
+    const n = Number(key.slice(i + 1));
+    if (kind === "card") return cardInfo(n);
+    if (kind === "slot") return slotInfo(n);
+    return foeInfo(kind, n);
+  }
+
+  /* ---------- 说明栏 ----------
+     电脑上在右边一栏最上面，手机上是手牌上面一条固定高度的栏：现在要做什么、刚才为什么出不了牌，
+     以及鼠标停在哪张牌、哪个敌人、哪个卡槽上的说明。内容会变，位置和大小不变，不会把手牌挤来挤去，也不用弹窗。 */
+  const sideVisible = () => !(window.matchMedia && window.matchMedia("(max-width: 1000px)").matches);
+
+  function say(text) {
+    V.msg = text;
+    V.msgUntil = Date.now() + 4000;
+    renderInfo();
+    clearTimeout(V.msgTimer);
+    V.msgTimer = setTimeout(renderInfo, 4100);
+  }
+
+  function nowLine(c) {
+    if (c.result) return "这一场打完了。";
+    if (c.pending) return "抽到了颤蚓幼虫：点一个亮起来的空卡槽，把它放进去。";
+    if (V.selected != null) {
+      const loc = c.locate(V.selected);
+      if (loc) return `把「${c.cardName(loc.card)}」放进一个亮起来的卡槽；再点一次这张牌就取消。`;
+    }
+    return sideVisible() ? "点一张牌再点卡槽，或者直接把牌拖过去。鼠标停在牌、敌人、卡槽上，这里会写说明。"
+      : "点一张牌再点卡槽，或者直接把牌拖过去。点敌人、卡槽看说明。";
+  }
+
+  function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
+
+  function renderInfo() {
+    const c = V.c;
+    const box = $("#pick-info");
+    if (!box || !c) return;
+    if (box.dataset.ready !== "1") {
+      box.innerHTML = '<div class="pi-live" aria-live="polite"><p class="pi-now"></p><p class="pi-msg"></p></div><p class="pi-kwline"></p><div class="pi-detail"></div>';
+      box.dataset.ready = "1";
+    }
+    const msg = V.msg && Date.now() < V.msgUntil ? V.msg : "";
+    let kw = "";
+    if (V.selected != null) {
+      const loc = c.locate(V.selected);
+      if (loc) kw = U.keywordsOf(loc.card, c.cardText(loc.card)).map(k => `${k.key}：${k.text}`).join("；");
+    }
+    box.classList.toggle("urgent", !!c.pending);
+    box.classList.toggle("has-msg", !!msg);
+    setText(box.querySelector(".pi-now"), nowLine(c));
+    setText(box.querySelector(".pi-msg"), msg);
+    setText(box.querySelector(".pi-kwline"), kw);
+    const key = V.hoverKey || V.pinKey || (V.selected != null ? `card:${V.selected}` : null);
+    const html = detailFor(key);
+    const detail = box.querySelector(".pi-detail");
+    if (detail.dataset.html !== html) { detail.innerHTML = html; detail.dataset.html = html; }
+  }
+
+  function setHover(el) {
+    const key = keyOf(el);
+    if (key === V.hoverKey) return;
+    V.hoverKey = key;
+    renderInfo();
+  }
+
+  /* 点敌人、卡槽：电脑上把说明钉在说明栏里；手机上没有右边一栏，就用浮窗。 */
+  function inspect(el) {
+    const key = keyOf(el);
+    const html = detailFor(key);
+    if (!html) return;
+    if (sideVisible()) { V.pinKey = key; renderInfo(); } else U.showTip(html, el);
   }
 
   function renderTerms() {
@@ -501,6 +616,7 @@
     d.ghost.style.left = (ev.clientX - 68) + "px";
     d.ghost.style.top = (ev.clientY - 90) + "px";
     const slot = slotUnder(ev.clientX, ev.clientY);
+    setHover(slot);
     if (d.hover && d.hover !== slot) d.hover.classList.remove("drop-hover");
     if (slot && slot.classList.contains("can")) slot.classList.add("drop-hover");
     d.hover = slot;
@@ -532,15 +648,19 @@
       if (c.pending) {
         U.hideTip();
         const r = act(() => c.placeLarva(lane));
-        if (!r.ok) U.flash(r.reason);
+        if (!r.ok) say(r.reason);
       } else if (V.selected != null) { U.hideTip(); tryPlay(V.selected, lane); }
-      else showSlotTip(slotEl);  // 没在出牌时点卡槽：看这个卡槽的说明
+      else inspect(slotEl);  // 没在出牌时点卡槽：看这个卡槽的说明
       return;
     }
     const foe = ev.target.closest("[data-tip]");
-    if (foe) { showFoeTip(foe); return; }
+    if (foe) { inspect(foe); return; }
     const b = ev.target.closest("[data-act], [data-tab], [data-dbg-act], [data-ctrl-act]");
-    if (!b) { if (V.selected != null && !ev.target.closest(".hand-area")) { V.selected = null; render(); } return; }
+    if (!b) {
+      if (V.pinKey && !ev.target.closest("#pick-info")) { V.pinKey = null; renderInfo(); }
+      if (V.selected != null && !ev.target.closest(".hand-area, #pick-info")) { V.selected = null; render(); }
+      return;
+    }
     if (b.dataset.tab) { setTab(b.dataset.tab); return; }
     if (b.dataset.dbgAct) { debugAction(b.dataset.dbgAct); return; }
     if (b.dataset.ctrlAct) { V.ctrl.onAct(b.dataset.ctrlAct); return; }
@@ -599,9 +719,17 @@
     combat.addEventListener("change", onChange);
     combat.addEventListener("keydown", ev => {
       const foe = ev.target.closest && ev.target.closest("[data-tip]");
-      if (foe && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); showFoeTip(foe); }
+      if (foe && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); inspect(foe); }
     });
     $("#hand-area").addEventListener("pointerdown", onPointerDown);
+    const INSPECT = "[data-card], [data-tip], [data-slot]";
+    combat.addEventListener("pointerover", ev => {
+      if (ev.pointerType && ev.pointerType !== "mouse") return;
+      if (!ev.target.closest("#board, #hand-area, #hud")) return;  // 鼠标移到说明栏、日志上：说明留着，方便看
+      setHover(ev.target.closest(INSPECT));
+    });
+    combat.addEventListener("pointerleave", () => setHover(null));
+    combat.addEventListener("focusin", ev => { const t = ev.target.closest && ev.target.closest(INSPECT); if (t) setHover(t); });
     window.addEventListener("pointermove", onPointerMove, { passive: false });
     window.addEventListener("pointerup", ev => endDrag(ev, false));
     window.addEventListener("pointercancel", ev => endDrag(ev, true));
@@ -613,6 +741,7 @@
     });
     document.addEventListener("keydown", ev => {
       if (ev.key !== "Escape" || !V.c) return;
+      if (V.pinKey) { V.pinKey = null; renderInfo(); }
       if (V.selected != null) { V.selected = null; render(); }
       $("#side").classList.remove("open");
     });
