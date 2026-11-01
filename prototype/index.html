@@ -539,6 +539,13 @@ table.rate th, table.rate td { border-bottom: 1px solid var(--line); padding: 4p
 table.rate thead th { color: var(--dim); font-weight: 500; }
 table.rate tbody th { font-weight: 500; }
 table.rate td { font-variant-numeric: tabular-nums; }
+table.rate .sort { background: none; border: 0; padding: 0; color: var(--dim); font: inherit; cursor: pointer; white-space: nowrap; }
+table.rate .sort:hover { color: var(--light); }
+table.rate .sort[aria-pressed="true"] { color: var(--light); font-weight: 700; }
+table.rate .frac { margin-left: 6px; color: var(--dim); font-size: 12px; }
+table.rate td.na { color: var(--dim); }
+.server-list > summary { color: var(--dim); }
+.server-list .rec-list { margin-top: 8px; }
 .meter { display: inline-block; vertical-align: middle; width: 72px; height: 8px; border-radius: 4px; background: #B48F3540; margin-right: 8px; overflow: hidden; }
 .meter i { display: block; height: 100%; background: #B48F35; border-radius: 4px; }
 .sv-avg { color: var(--dim); font-size: 13px; }

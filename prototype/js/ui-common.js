@@ -28,7 +28,7 @@
       deck: clone(D.STARTER_DECK), relics: {}, waxSlot: 2,
       config: clone(D.CONFIG), god: { lockHp: false, infiniteEnergy: false },
       overrides: { enemies: {}, cards: {} }, seed: randomSeed(),
-      run: clone(D.RUN), runV: 3, runSeed: randomSeed(), tester: ""
+      run: clone(D.RUN), runV: 3, runSeed: randomSeed(), tester: "", upload: true
     };
   }
 
@@ -71,6 +71,7 @@
       if (!s) return d;
       if (s.mode === "run" || s.mode === "sandbox" || s.mode === "records") d.mode = s.mode;
       if (typeof s.tester === "string") d.tester = s.tester.slice(0, 40);
+      if (typeof s.upload === "boolean") d.upload = s.upload;
       if (Array.isArray(s.deck)) d.deck = s.deck.filter(x => x && D.CARDS[x.id]).map(x => ({ id: x.id, up: !!x.up })).slice(0, 80);
       if (validEnc(s.enc)) { d.enc = s.enc; d.encName = String(s.encName || "自定义").slice(0, 30); }
       if (s.relics) for (const k of Object.keys(D.RELICS)) if (s.relics[k] && D.RELICS[k].combat) d.relics[k] = true;

@@ -16,7 +16,7 @@
     run: { win: "通关", lose: "失败", abandoned: "放弃", unfinished: "没打完" },
     sandbox: { win: "胜利", lose: "失败", unfinished: "没打完" }
   };
-  const V = { imported: [], includeLocal: true, confirm: null, timer: null, survey: null };
+  const V = { imported: [], server: null, includeLocal: true, skipGod: true, sort: "offered", confirm: null, timer: null, survey: null, health: undefined };
   const arr = x => (Array.isArray(x) ? x : []);
   const num = x => (Number.isFinite(Number(x)) ? Number(x) : 0);
   const uniq = list => Array.from(new Set(list.filter(Boolean).map(String)));
@@ -125,6 +125,93 @@
     saveFile(REC.bundleName(list.length), JSON.stringify(REC.bundle(list), null, 2));
   }
 
+  /* ---------- 后台 ----------
+     部署在 Cloudflare 上、并且配好了后台（见 functions/api 和 README）时，完整一局的记录自动上传；
+     本地文件和 claude.ai 里的页面不上传。每份记录第一次上传时生成一个随机 token 存在这台设备上，
+     之后补填问卷就用它更新同一份；别人拿不到这个 token，就改不了你的记录。 */
+  const UPLOAD = "slot-roguelike-upload-v1";
+  const ADMIN = "slot-roguelike-admin-v1";
+  const canServe = !host && /^https?:$/.test(location.protocol);
+  let healthP = null;
+  function serverHealth() {
+    if (!canServe) return Promise.resolve(null);
+    if (!healthP) healthP = fetch("/api/health", { cache: "no-store" }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    return healthP;
+  }
+
+  function uploadState() {
+    try { const st = JSON.parse(localStorage.getItem(UPLOAD) || "{}"); return st && typeof st === "object" ? st : {}; } catch (e) { return {}; }
+  }
+  function saveUploadState(st) {
+    const ids = Object.keys(st);
+    if (ids.length > 200) ids.sort((a, b) => String(st[a].at || "").localeCompare(String(st[b].at || ""))).slice(0, ids.length - 200).forEach(id => { delete st[id]; });
+    try { localStorage.setItem(UPLOAD, JSON.stringify(st)); } catch (e) { /* 存不了就算了 */ }
+  }
+  function newToken() {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("") + "-" + Date.now().toString(36);
+  }
+  const sigOf = rec => [rec.result, rec.endedAt, rec.survey ? rec.survey.at : "", arr(rec.fights).length, arr(rec.timeline).length].join("|");
+
+  /* 上传一份完整一局的记录。返回 "off"（没开后台或者关掉了上传）、"same"（传过了、没变）、"sent"、"failed"。 */
+  async function upload(rec) {
+    if (!rec || rec.mode !== "run" || U.S.set.upload === false) return "off";
+    const h = await serverHealth();
+    if (!h || !h.db) return "off";
+    const st = uploadState();
+    const cur = st[rec.id] || (st[rec.id] = { token: newToken() });
+    const sig = sigOf(rec);
+    if (cur.sig === sig) return "same";
+    saveUploadState(st);  // token 先存下来，万一请求到了服务器但回复丢了，下次还能用同一个 token 更新
+    try {
+      const r = await fetch("/api/records", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ record: rec, token: cur.token }) });
+      if (!r.ok) return "failed";
+      const latest = uploadState();
+      latest[rec.id] = Object.assign({}, latest[rec.id] || cur, { sig, at: new Date().toISOString() });
+      saveUploadState(latest);
+      return "sent";
+    } catch (e) { return "failed"; }
+  }
+
+  function uploadText(state) {
+    if (state === "sent" || state === "same") return "这一局的记录已经传到后台，策划能看到（只有游戏里的数据和你填的问卷）。不想传，可以在「对局记录」页关掉。";
+    if (state === "failed") return "这一局的记录没传上去，可以点「只下载记录」，把文件发给策划。";
+    return "";
+  }
+
+  const adminKey = () => { try { return localStorage.getItem(ADMIN) || ""; } catch (e) { return ""; } };
+  function setAdminKey(k) { try { if (k) localStorage.setItem(ADMIN, k); else localStorage.removeItem(ADMIN); } catch (e) { /* 忽略 */ } }
+
+  async function fetchServer(key) {
+    try {
+      const r = await fetch("/api/records", { headers: { authorization: `Bearer ${key}` }, cache: "no-store" });
+      if (r.status === 401) return { error: "后台密码不对" };
+      if (!r.ok) return { error: `后台出错了（${r.status}）` };
+      return { records: REC.sort(REC.dedupe(REC.normalizeImport(await r.json()))) };
+    } catch (e) { return { error: "连不上后台" }; }
+  }
+
+  async function loadServer(key) {
+    const res = await fetchServer(key);
+    if (res.error) { U.flash(res.error); if (res.error === "后台密码不对") setAdminKey(""); render(); return; }
+    setAdminKey(key);
+    V.server = res.records;
+    const d = new Date();
+    V.serverAt = `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+    render();
+    U.flash(`从后台读到 ${res.records.length} 份记录`, "ok");
+  }
+
+  async function deleteServer(id) {
+    try {
+      const r = await fetch(`/api/records?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: { authorization: `Bearer ${adminKey()}` } });
+      if (!r.ok) { U.flash(`删不掉（${r.status}）`); return; }
+      V.server = (V.server || []).filter(x => x.id !== id);
+      render();
+      U.flash("已经从后台删掉了", "ok");
+    } catch (e) { U.flash("连不上后台"); }
+  }
+
   /* ---------- 反馈问卷 ----------
      题目在 data.js 的 SURVEY 里。ctx.cards / ctx.enemies：这一局见过的牌和敌人，放在下拉框最前面。 */
   const baseName = n => String(n).replace(/\+$/, "");
@@ -214,13 +301,14 @@
   function show() {
     QW.ui.combat.stop();
     document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== "records"; });
-    U.setTop("<span>每一局的记录和反馈问卷；可以导入别人发来的记录，一起汇总</span>", [], null);
+    U.setTop("<span>每一局的记录和反馈问卷；可以导入别人发来的记录，或者从后台读所有人的，一起汇总</span>", [], null);
     render();
+    if (V.health === undefined) serverHealth().then(h => { V.health = h; if (!$("#records").hidden) render(); });
   }
 
   function render() {
     const local = REC.sort(readAll());
-    $("#records").innerHTML = `<div class="records">${localBox(local)}${importBox()}${summaryBox(local)}</div>`;
+    $("#records").innerHTML = `<div class="records">${localBox(local)}${serverBox()}${importBox()}${summaryBox(local)}</div>`;
   }
 
   function fmtTime(iso) {
@@ -267,7 +355,9 @@
     const attrs = `data-src="${src}" data-id="${esc(r.id)}"`;
     const del = src === "local"
       ? `<button type="button" class="btn" data-rc="del" ${attrs}>${V.confirm === "del:" + r.id ? "确定删除？再点一次" : "删除"}</button>`
-      : `<button type="button" class="btn" data-rc="unimport" ${attrs}>移除</button>`;
+      : src === "server"
+        ? `<button type="button" class="btn" data-rc="server-del" ${attrs}>${V.confirm === "sdel:" + r.id ? "确定从后台删掉？再点一次" : "从后台删掉"}</button>`
+        : `<button type="button" class="btn" data-rc="unimport" ${attrs}>移除</button>`;
     return `<li class="rec-row result-${resultClass(r)}"><div class="rec-main">`
       + `<b>${esc(MODE_NAME[r.mode])} · ${esc(resultName(r))}</b><span class="when">${esc(fmtTime(r.endedAt || r.startedAt))}</span>`
       + (r.survey ? '<span class="sv-tag done">已填问卷</span>' : '<span class="sv-tag">没填问卷</span>')
@@ -287,6 +377,31 @@
           + `<button type="button" class="btn" data-rc="clear">${V.confirm === "clear" ? "确定清空？再点一次" : "清空"}</button></div>`
         : '<p class="note">打完一局（中途放弃也算），或者在战斗沙盒里打完一场，记录就会自动存在这里。</p>')
       + `<p class="note">记录只存在这个浏览器里：完整一局最多留 ${LIMIT.run} 份，战斗沙盒最多 ${LIMIT.sandbox} 份，再多就把最旧的挤掉。想留着，或者要发给策划，就下载成文件。</p></section>`;
+  }
+
+  function serverBox() {
+    const h = V.health;
+    let body;
+    if (!canServe) body = '<p class="note">在部署好的网站上才能用（现在打开的是本地文件，或者 claude.ai 里的页面）。</p>';
+    else if (h === undefined) body = '<p class="note">正在看这个网站有没有开后台……</p>';
+    else if (!h || !h.db) body = '<p class="note">这个网站还没开后台：要在 Cloudflare 里给这个 Pages 项目绑定一个 D1 数据库（变量名 DB），再加一个后台密码（Secret，名字 ADMIN_KEY）。步骤见项目 README 的「后台」一节。</p>';
+    else if (!h.admin) body = '<p class="note">已经在收大家的记录了，但还没设后台密码（Secret，名字 ADMIN_KEY），所以读不出来。</p>';
+    else if (!adminKey()) {
+      body = '<div class="actions-row"><label class="field" for="admin-key">后台密码<input id="admin-key" type="password" autocomplete="current-password"></label>'
+        + '<button type="button" class="btn-main" data-rc="server-login">登录并读取所有人的记录</button></div>';
+    } else {
+      body = `<div class="actions-row"><button type="button" class="btn-main" data-rc="server-load">${V.server ? "重新读取" : "读取所有人的记录"}</button>`
+        + (V.server && V.server.length ? '<button type="button" class="btn" data-rc="dl-server">全部下载成一个文件</button>' : "")
+        + '<button type="button" class="btn" data-rc="server-logout">退出后台</button></div>'
+        + (V.server ? `<p class="note">后台一共 ${V.server.length} 份记录（${esc(V.serverAt)} 读取），已经算进下面的汇总。</p>` : "")
+        + (V.server && V.server.length ? `<details class="server-list"${V.serverOpen ? " open" : ""}><summary>看列表（乱传的可以删掉）</summary><ul class="rec-list">${V.server.map(r => rowHtml(r, "server")).join("")}</ul></details>` : "");
+    }
+    const up = canServe && h && h.db
+      ? `<label class="toggle"><input type="checkbox" data-rc="upload-toggle"${U.S.set.upload !== false ? " checked" : ""}>把我在这台设备上玩的完整一局自动传到后台</label>`
+      : "";
+    return '<section class="box" aria-labelledby="h-rec-server"><div class="box-head"><h2 id="h-rec-server">后台：所有人的记录</h2>'
+      + '<span class="hint">试玩的人每打完一局，记录会自动传上来；策划登录以后，下面的汇总就是所有人的</span></div>'
+      + body + up + "</section>";
   }
 
   function importBox() {
@@ -346,17 +461,45 @@
     });
   }
 
-  function offersTable(a) {
-    const rows = Object.keys(a.cardOffers).map(k => ({ name: k, offered: num(a.cardOffers[k].offered), picked: num(a.cardOffers[k].picked) }))
-      .sort((x, y) => y.offered - x.offered || y.picked - x.picked || x.name.localeCompare(y.name, "zh"));
-    if (!rows.length) return '<p class="note">还没有卡牌奖励的记录。</p>';
-    return `<p class="note">一共 ${a.rewardPicks + a.rewardSkips} 组卡牌奖励：拿了 ${a.rewardPicks} 次，跳过 ${a.rewardSkips} 次。选取率 = 被拿走的次数 ÷ 出现的次数。</p>`
-      + '<div class="table-wrap"><table class="rate"><thead><tr><th scope="col">牌</th><th scope="col">出现</th><th scope="col">被拿走</th><th scope="col">选取率</th></tr></thead><tbody>'
-      + rows.map(r => {
-        const pct = r.offered ? Math.round(r.picked / r.offered * 100) : 0;
-        return `<tr><th scope="row">${esc(r.name)}</th><td>${r.offered}</td><td>${r.picked}</td>`
-          + `<td><span class="meter" aria-hidden="true"><i style="width:${pct}%"></i></span>${pct}%</td></tr>`;
-      }).join("")
+  /* 卡牌表：每张牌一行，点表头换排序。胜率 = 最后的卡组里有这张牌、并且打完了的局里，通关的比例。 */
+  const CARD_COLS = [
+    ["offered", "奖励里出现"], ["picked", "被拿走"], ["pickRate", "选取率"], ["bought", "商店买"], ["removed", "删掉"],
+    ["upgraded", "升级"], ["runs", "带着它的局"], ["winRate", "这些局的通关率"], ["plays", "打出次数"]
+  ];
+  const pct = (n, d) => (d ? Math.round(n / d * 100) : null);
+  const rateCell = (n, d) => {
+    const p = pct(n, d);
+    return p == null ? '<td class="na">—</td>'
+      : `<td><span class="meter" aria-hidden="true"><i style="width:${p}%"></i></span>${p}%<span class="frac">${n}/${d}</span></td>`;
+  };
+
+  function cardsTable(a) {
+    const rows = Object.keys(a.cards).map(k => {
+      const c = a.cards[k];
+      return Object.assign({ name: k, pickRate: pct(c.picked, c.offered), winRate: pct(c.wins, c.finished) }, c);
+    });
+    if (!rows.length) return '<p class="note">还没有卡牌的记录。</p>';
+    const key = V.sort || "offered";
+    const val = r => (r[key] == null ? -1 : r[key]);
+    rows.sort((x, y) => val(y) - val(x) || y.runs - x.runs || x.name.localeCompare(y.name, "zh"));
+    const head = CARD_COLS.map(([k, label]) =>
+      `<th scope="col"><button type="button" class="sort" data-rc="sort" data-k="${k}" aria-pressed="${k === key}">${esc(label)}${k === key ? " ↓" : ""}</button></th>`).join("");
+    const base = pct(a.wins, a.finished);
+    return `<p class="note">一共 ${a.rewardPicks + a.rewardSkips} 组卡牌奖励：拿了 ${a.rewardPicks} 次，跳过 ${a.rewardSkips} 次。`
+      + `所有打完的完整一局（通关或失败，不算放弃和没打完的）一共 ${a.finished} 局，通关率 ${base == null ? "—" : `${base}%`}，`
+      + "某张牌的通关率比它高，说明带着这张牌的局赢得多。局数少的时候数不太准。点表头可以换排序。</p>"
+      + `<div class="table-wrap"><table class="rate cards"><thead><tr><th scope="col">牌</th>${head}</tr></thead><tbody>`
+      + rows.map(r => `<tr><th scope="row">${esc(r.name)}</th><td>${r.offered}</td><td>${r.picked}</td>${rateCell(r.picked, r.offered)}`
+        + `<td>${r.bought}</td><td>${r.removed}</td><td>${r.upgraded}</td><td>${r.runs}</td>${rateCell(r.wins, r.finished)}<td>${r.plays}</td></tr>`).join("")
+      + "</tbody></table></div>";
+  }
+
+  function relicsTable(a) {
+    const rows = Object.keys(a.relics).map(k => Object.assign({ name: k }, a.relics[k]))
+      .sort((x, y) => y.runs - x.runs || x.name.localeCompare(y.name, "zh"));
+    if (!rows.length) return '<p class="note">还没有奇物的记录。</p>';
+    return '<div class="table-wrap"><table class="rate"><thead><tr><th scope="col">奇物</th><th scope="col">拿到它的局</th><th scope="col">这些局的通关率</th></tr></thead><tbody>'
+      + rows.map(r => `<tr><th scope="row">${esc(r.name)}</th><td>${r.runs}</td>${rateCell(r.wins, r.finished)}</tr>`).join("")
       + "</tbody></table></div>";
   }
 
@@ -390,11 +533,14 @@
   }
 
   function summaryBox(local) {
-    const pool = REC.dedupe((V.includeLocal ? local : []).concat(V.imported));
+    const pool = REC.dedupe((V.includeLocal ? local : []).concat(V.imported, V.server || []));
     const head = '<section class="box" aria-labelledby="h-rec-sum"><div class="box-head"><h2 id="h-rec-sum">汇总</h2>'
-      + `<label class="toggle"><input type="checkbox" data-rc="include-local"${V.includeLocal ? " checked" : ""}>把这台设备上的记录也算进去</label></div>`;
+      + `<label class="toggle"><input type="checkbox" data-rc="include-local"${V.includeLocal ? " checked" : ""}>把这台设备上的记录也算进去</label>`
+      + `<label class="toggle"><input type="checkbox" data-rc="skip-god"${V.skipGod ? " checked" : ""}>不算开了锁血或无限费用的局</label></div>`
+      + (V.server ? `<p class="note">包括从后台读到的 ${V.server.length} 份记录。</p>` : "");
     if (!pool.length) return `${head}<p class="note">还没有可以汇总的记录。</p></section>`;
-    const a = REC.aggregate(pool);
+    const a = REC.aggregate(pool, { skipGod: V.skipGod });
+    if (!a.total) return `${head}<p class="note">${pool.length} 份记录都开了锁血或无限费用，取消上面的勾就能看到。</p></section>`;
     const rr = a.results.run;
     const ends = a.runEnds;
     const avgFloor = ends.length ? ends.reduce((s, e) => s + num(e.floor), 0) / ends.length : 0;
@@ -415,7 +561,9 @@
     ].join("");
     return head + `<div class="tiles">${tiles}</div>`
       + `<div class="sum-grid">${parts}</div>`
-      + `<h3 class="sum-h">卡牌奖励的选取率</h3>${offersTable(a)}`
+      + (a.skipped ? `<p class="note">没算开了锁血或无限费用的 ${a.skipped} 份记录。</p>` : "")
+      + `<h3 class="sum-h">卡牌：选取率和胜率</h3>${cardsTable(a)}`
+      + `<h3 class="sum-h">奇物</h3>${relicsTable(a)}`
       + surveyPart(a)
       + "</section>";
   }
@@ -483,7 +631,11 @@
   }
 
   /* ---------- 操作 ---------- */
-  function find(src, id) { return src === "imported" ? V.imported.find(r => r.id === id) || null : getLocal(id); }
+  function find(src, id) {
+    if (src === "imported") return V.imported.find(r => r.id === id) || null;
+    if (src === "server") return (V.server || []).find(r => r.id === id) || null;
+    return getLocal(id);
+  }
 
   function armConfirm(key) {
     V.confirm = key;
@@ -499,7 +651,8 @@
       onSubmit(survey, dl) {
         const next = Object.assign({}, rec, { survey });
         if (src === "imported") V.imported = V.imported.map(r => (r.id === rec.id ? next : r));
-        else if (!put(next)) U.flash("浏览器里存不下了，请直接下载");
+        else if (src === "server") V.server = V.server.map(r => (r.id === rec.id ? next : r));
+        else { if (!put(next)) U.flash("浏览器里存不下了，请直接下载"); upload(next); }
         render();
         if (dl) download(next); else U.flash("问卷已保存", "ok");
       }
@@ -551,7 +704,21 @@
       case "unimport": V.imported = V.imported.filter(r => r.id !== id); render(); return;
       case "unimport-all": V.imported = []; render(); return;
       case "dl-local": downloadMany(REC.sort(readAll())); return;
-      case "dl-merged": downloadMany(REC.sort(REC.dedupe((V.includeLocal ? readAll() : []).concat(V.imported)))); return;
+      case "dl-merged": downloadMany(REC.sort(REC.dedupe((V.includeLocal ? readAll() : []).concat(V.imported, V.server || [])))); return;
+      case "dl-server": downloadMany(V.server || []); return;
+      case "server-login": {
+        const k = ($("#admin-key") || {}).value || "";
+        if (!k.trim()) { U.flash("先填后台密码"); return; }
+        loadServer(k.trim());
+        return;
+      }
+      case "server-load": loadServer(adminKey()); return;
+      case "server-logout": setAdminKey(""); V.server = null; render(); return;
+      case "server-del":
+        if (V.confirm !== "sdel:" + id) { armConfirm("sdel:" + id); render(); return; }
+        V.confirm = null;
+        deleteServer(id);
+        return;
       case "clear":
         if (V.confirm !== "clear") { armConfirm("clear"); render(); return; }
         V.confirm = null;
@@ -565,6 +732,7 @@
         return;
       }
       case "copy": copyText(); return;
+      case "sort": V.sort = b.dataset.k; render(); return;
       default: return;
     }
   }
@@ -572,6 +740,8 @@
   function onChange(ev) {
     const t = ev.target;
     if (t.dataset.rc === "include-local") { V.includeLocal = t.checked; render(); return; }
+    if (t.dataset.rc === "skip-god") { V.skipGod = t.checked; render(); return; }
+    if (t.dataset.rc === "upload-toggle") { U.S.set.upload = t.checked; U.saveSettings(); return; }
     if (t.dataset.rc === "file" && t.files && t.files.length) {
       const files = Array.from(t.files);
       Promise.all(files.map(f => readText(f).then(text => ({ name: f.name, text }), () => ({ name: f.name, text: "" })))).then(importTexts);
@@ -583,6 +753,10 @@
     if (b && b.tagName !== "INPUT") onAct(b);
   });
   $("#records").addEventListener("change", onChange);
+  // 页面重画时记住后台列表是不是展开着（不然点「删掉」要确认时列表会收起来）
+  $("#records").addEventListener("toggle", ev => {
+    if (ev.target.classList && ev.target.classList.contains("server-list")) V.serverOpen = ev.target.open;
+  }, true);
   $("#modal").addEventListener("click", ev => {
     const b = ev.target.closest("[data-sv], [data-rc]");
     if (!b) return;
@@ -591,5 +765,5 @@
     else if (b.dataset.rc) onAct(b);
   });
 
-  QW.ui.records = { show, put, download, surveyFields, readSurvey, answered, rememberTester, defaultAnswers, openSurvey };
+  QW.ui.records = { show, put, download, upload, uploadText, surveyFields, readSurvey, answered, rememberTester, defaultAnswers, openSurvey };
 })();

@@ -473,7 +473,8 @@
       if (!card) return no("没有这张牌");
       run.deck.splice(p.index, 1);
       run.stats.cardsRemoved++;
-      note(run, `删去了「${cardName(card)}」`);
+      say(run, `删去了「${cardName(card)}」`);
+      track(run, "remove", `删去了「${cardName(card)}」`, { card: D.CARDS[card.id].name });
       s.count--;
       if (s.count <= 0) run.queue.shift();
     } else if (s.kind === "upgrade") {
@@ -481,7 +482,8 @@
       if (!card || !canUpgrade(card)) return no("这张牌不能升级");
       card.up = true;
       run.queue.shift();
-      note(run, `「${D.CARDS[card.id].name}」升级成了「${cardName(card)}」`);
+      say(run, `「${D.CARDS[card.id].name}」升级成了「${cardName(card)}」`);
+      track(run, "upgrade", `升级了「${D.CARDS[card.id].name}」`, { card: D.CARDS[card.id].name });
     } else if (s.kind === "wax") {
       if (!(p.index >= 0 && p.index < 5)) return no("没有这个卡槽");
       run.waxSlot = p.index;
@@ -602,7 +604,9 @@
     if (!pay(run, it.price)) return no("金币不够");
     it.sold = true;
     const how = addCard(run, it);
-    note(run, how === "replaced" ? "寒霜之触替换了卡组里的冰霜之触" : `买下了「${cardName(it)}」`);
+    const text = how === "replaced" ? "寒霜之触替换了卡组里的冰霜之触" : `买下了「${cardName(it)}」`;
+    say(run, text);
+    track(run, "buy", `商店：${text}（${it.price} 金币）`, { card: cardName(it), price: it.price });
     return ok;
   }
 
@@ -615,7 +619,8 @@
     it.sold = true;
     const lines = [];
     gainRelic(run, it.id, lines, `第 ${run.floor} 层商店（${it.price} 金币）`);
-    note(run, `买下了${lines.join("，")}`);
+    say(run, `买下了${lines.join("，")}`);
+    track(run, "buy", `商店：买下了${lines.join("，")}（${it.price} 金币）`, { relic: D.RELICS[it.id].name, price: it.price });
     autoSteps(run);
     return ok;
   }

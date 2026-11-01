@@ -183,6 +183,57 @@ test("汇总：胜负、停在哪一层、选取率、问卷平均分和文字",
   assert.ok(Object.keys(a.nodeChoices).includes("战斗"));
 });
 
+test("每张牌的选取率和胜率：升级前后算同一张，同一局里有几张都只算一局；放弃的局不算进胜率", () => {
+  const base = REC.fromRun(botRun(6), {});
+  const mk = (id, result, deck, timeline, god) => Object.assign({}, base, {
+    id, result, finalDeck: deck, timeline, fights: [], summary: Object.assign({}, base.summary, { relics: result === "win" ? ["残破书页", "时侠腕表"] : ["残破书页"] }),
+    settings: Object.assign({}, base.settings, { god: god ? { lockHp: true } : {} })
+  });
+  const pick = (offered, picked) => ({ kind: "cards", text: "", data: { offered, picked } });
+  const recs = [
+    mk("a", "win", ["打击", "打击", "火球术+"], [pick(["火球术", "冰刺", "雪葬"], "火球术"), { kind: "upgrade", data: { card: "火球术" } }]),
+    mk("b", "lose", ["打击", "冰刺"], [pick(["火球术", "冰刺", "雪葬"], "冰刺"), { kind: "buy", data: { card: "雪葬", price: 2 } }, { kind: "remove", data: { card: "雪葬" } }]),
+    mk("c", "abandoned", ["打击", "火球术"], [pick(["火球术", "冰刺", "雪葬"], null)]),
+    mk("d", "win", ["打击", "火球术"], [pick(["火球术", "冰刺", "雪葬"], "火球术")], true)
+  ];
+  const a = REC.aggregate(recs);
+  assert.equal(a.finished, 3);
+  assert.equal(a.wins, 2);
+  assert.deepEqual(a.cards["打击"], { offered: 0, picked: 0, bought: 0, removed: 0, upgraded: 0, runs: 4, finished: 3, wins: 2, plays: 0 });
+  assert.equal(a.cards["火球术"].offered, 4);
+  assert.equal(a.cards["火球术"].picked, 2);
+  assert.equal(a.cards["火球术"].upgraded, 1);
+  assert.equal(a.cards["火球术"].runs, 3, "「火球术+」算进「火球术」");
+  assert.equal(a.cards["火球术"].finished, 2, "放弃的那局不算进胜率的分母");
+  assert.equal(a.cards["火球术"].wins, 2);
+  assert.equal(a.cards["雪葬"].bought, 1);
+  assert.equal(a.cards["雪葬"].removed, 1);
+  assert.equal(a.cards["冰刺"].wins, 0);
+  assert.deepEqual(a.relics["时侠腕表"], { runs: 2, finished: 2, wins: 2 });
+  assert.equal(a.relics["残破书页"].runs, 4);
+
+  const strict = REC.aggregate(recs, { skipGod: true });
+  assert.equal(strict.total, 3);
+  assert.equal(strict.skipped, 1, "开了锁血的那份不算");
+  assert.equal(strict.cards["火球术"].wins, 1);
+});
+
+test("商店买牌、删牌、升级都会记进时间线", () => {
+  const run = R.createRun({ seed: "shoplog" });
+  run.gold = 50;
+  run.screen = { kind: "shop", node: null, shop: R.makeShop(run), notes: [] };
+  assert.ok(R.buyCard(run, 0).ok);
+  assert.ok(R.buyRemoval(run).ok);
+  R.resolveStep(run, { index: 0 });
+  run.screen = { kind: "rest", node: null, done: null, notes: [] };
+  assert.ok(R.restUpgrade(run).ok);
+  R.resolveStep(run, { index: run.deck.findIndex(R.canUpgrade) });
+  const kinds = run.record.timeline.map(t => t.kind);
+  for (const k of ["buy", "remove", "upgrade"]) assert.ok(kinds.includes(k), `时间线里有 ${k}`);
+  const buy = run.record.timeline.find(t => t.kind === "buy");
+  assert.ok(D.CARDS[Object.keys(D.CARDS).find(id => D.CARDS[id].name === buy.data.card.replace(/\+$/, ""))], "记下的是牌名");
+});
+
 test("汇总不会被奇怪的导入文件弄坏", () => {
   // 用 JSON.parse 造：和真的导入文件一样，"__proto__" 会变成普通的键
   const evil = JSON.parse(JSON.stringify({
